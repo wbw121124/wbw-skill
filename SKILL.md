@@ -16,13 +16,15 @@ A unified tool for managing notes with the following parameters:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | string | Yes | Action: create, list, read, update, delete, search |
+| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags |
 | `level` | string | No | Storage level: global, workspace, agent (default: workspace) |
 | `title` | string | For create | Note title |
 | `content` | string | For create/update | Note content |
+| `tags` | array | No | Tags for the note (for create/update) |
 | `id` | string | For read/update/delete | Note ID |
 | `agentName` | string | For agent level | Agent name |
 | `query` | string | For search | Search keyword |
+| `tag` | string | For list_by_tag | Tag to filter by |
 | `searchIn` | string | No | Search scope: all, title, content (default: all) |
 | `caseSensitive` | boolean | No | Case-sensitive search (default: false) |
 | `wholeWord` | boolean | No | Whole word match (default: false) |
@@ -36,7 +38,8 @@ A unified tool for managing notes with the following parameters:
   "action": "create",
   "level": "global",
   "title": "My Global Note",
-  "content": "This is a global note shared across all projects."
+  "content": "This is a global note shared across all projects.",
+  "tags": ["important", "reference"]
 }
 ```
 
@@ -124,6 +127,7 @@ title: "Note Title"
 created: "2026-09-05T12:00:00Z"
 updated: "2026-09-05T12:00:00Z"
 level: "global|workspace|agent"
+tags: [tag1, tag2]
 ---
 
 Note content here...
@@ -239,12 +243,51 @@ Use `jumpto` to navigate to a specific location:
 }
 ```
 
+## Tag Examples
+
+### Create Note with Tags
+```json
+{
+  "action": "create",
+  "level": "workspace",
+  "title": "Meeting Notes",
+  "content": "Discussed project timeline...",
+  "tags": ["meeting", "project-x"]
+}
+```
+
+### List Notes by Tag
+```json
+{
+  "action": "list_by_tag",
+  "tag": "meeting"
+}
+```
+
+### List All Tags
+```json
+{
+  "action": "list_tags"
+}
+```
+
+### Update Note Tags
+```json
+{
+  "action": "update",
+  "level": "workspace",
+  "id": "note-123",
+  "content": "Updated content...",
+  "tags": ["meeting", "project-x", "updated"]
+}
+```
+
 ## CLI Alternative
 
 You can also use the CLI script directly:
 ```bash
 # Create note
-node notes.js create --level global --title "My Note" --content "Content"
+node notes.js create --level global --title "My Note" --content "Content" --tags "important,reference"
 
 # List notes
 node notes.js list --level workspace
@@ -253,7 +296,7 @@ node notes.js list --level workspace
 node notes.js read --level agent --id "note-123" --agent-name "my-agent"
 
 # Update note
-node notes.js update --level workspace --id "note-123" --content "New content"
+node notes.js update --level workspace --id "note-123" --content "New content" --tags "tag1,tag2"
 
 # Delete note
 node notes.js delete --level global --id "note-123"
@@ -263,6 +306,12 @@ node notes.js search --query "keyword"
 node notes.js search --query "keyword" --level workspace --search-in title
 node notes.js search --query "keyword" --case-sensitive true --whole-word true
 node notes.js search --query "pattern" --regex true
+
+# List notes by tag
+node notes.js list-by-tag --tag "important"
+
+# List all tags
+node notes.js list-tags
 
 # Parse jump syntax
 node notes.js parse-jumps --content "[@jumpto global,,note-123:10]"

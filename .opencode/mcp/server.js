@@ -120,12 +120,21 @@ class NotesManager {
                 const key = line.substring(0, colonIndex).trim();
                 let value = line.substring(colonIndex + 1).trim();
                 
-                if ((value.startsWith('"') && value.endsWith('"')) || 
-                    (value.startsWith("'") && value.endsWith("'"))) {
-                    value = value.slice(1, -1);
+                // 解析数组格式 [item1, item2, ...]
+                if (value.startsWith('[') && value.endsWith(']')) {
+                    const arrayStr = value.slice(1, -1).trim();
+                    if (arrayStr === '') {
+                        frontmatter[key] = [];
+                    } else {
+                        frontmatter[key] = arrayStr.split(',').map(item => item.trim());
+                    }
+                } else {
+                    if ((value.startsWith('"') && value.endsWith('"')) || 
+                        (value.startsWith("'") && value.endsWith("'"))) {
+                        value = value.slice(1, -1);
+                    }
+                    frontmatter[key] = value;
                 }
-                
-                frontmatter[key] = value;
             }
         }
 
@@ -135,12 +144,15 @@ class NotesManager {
         };
     }
 
-    createNote(level, title, content, agentName = null) {
+    createNote(level, title, content, agentName = null, tags = null) {
         const dir = this.getDir(level, agentName);
         fs.mkdirSync(dir, { recursive: true });
         
         const id = this.generateId();
         const now = new Date().toISOString();
+        
+        // 处理标签
+        const tagsStr = tags && tags.length > 0 ? `[${tags.join(', ')}]` : '[]';
         
         const frontmatter = [
             '---',
@@ -150,6 +162,7 @@ class NotesManager {
             `updated: "${now}"`,
             `level: "${level}"`,
             agentName ? `agent: "${agentName}"` : null,
+            `tags: ${tagsStr}`,
             '---'
         ].filter(Boolean).join('\n');
         
@@ -164,6 +177,7 @@ class NotesManager {
             title,
             level,
             agentName,
+            tags: tags || [],
             created: now,
             updated: now,
             path: filePath
@@ -191,7 +205,8 @@ class NotesManager {
                 created: frontmatter.created,
                 updated: frontmatter.updated,
                 level: frontmatter.level || level,
-                agentName: frontmatter.agent || agentName
+                agentName: frontmatter.agent || agentName,
+                tags: Array.isArray(frontmatter.tags) ? frontmatter.tags : []
             });
         }
         
@@ -219,6 +234,7 @@ class NotesManager {
             updated: frontmatter.updated,
             level: frontmatter.level || level,
             agentName: frontmatter.agent || agentName,
+            tags: Array.isArray(frontmatter.tags) ? frontmatter.tags : [],
             path: filePath
         };
 
@@ -237,7 +253,7 @@ class NotesManager {
         return result;
     }
 
-    updateNote(level, id, content, agentName = null) {
+    updateNote(level, id, content, agentName = null, tags = null) {
         const dir = this.getDir(level, agentName);
         const filePath = path.join(dir, `${id}.md`);
         
@@ -248,6 +264,10 @@ class NotesManager {
         const existingContent = fs.readFileSync(filePath, 'utf8');
         const { frontmatter } = this.parseNote(existingContent);
         
+        // 使用新标签或保留原有标签
+        const updatedTags = tags !== null ? tags : (Array.isArray(frontmatter.tags) ? frontmatter.tags : []);
+        const tagsStr = updatedTags.length > 0 ? `[${updatedTags.join(', ')}]` : '[]';
+        
         const updatedFrontmatter = [
             '---',
             `id: "${frontmatter.id || id}"`,
@@ -256,6 +276,7 @@ class NotesManager {
             `updated: "${new Date().toISOString()}"`,
             `level: "${frontmatter.level || level}"`,
             frontmatter.agent ? `agent: "${frontmatter.agent}"` : null,
+            `tags: ${tagsStr}`,
             '---'
         ].filter(Boolean).join('\n');
         
@@ -267,6 +288,7 @@ class NotesManager {
             title: frontmatter.title || 'Untitled',
             level: frontmatter.level || level,
             agentName: frontmatter.agent || agentName,
+            tags: updatedTags,
             updated: new Date().toISOString()
         };
     }
@@ -282,6 +304,130 @@ class NotesManager {
         fs.unlinkSync(filePath);
         
         return { deleted: true };
+    }
+
+    /**
+     * 按标签列出笔记
+     */
+    listNotesByTag(tag, level = null, agentName = null) {
+        const results = [];
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir, level: resultLevel, agent } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter } = this.parseNote(content);
+                    
+                    const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+                    
+                    if (tags.some(t => t.toLowerCase() === tag.toLowerCase())) {
+                        results.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            created: frontmatter.created,
+                            updated: frontmatter.updated,
+                            level: resultLevel,
+                            agentName: agent,
+                            tags: tags
+                        });
+                    }
+                }
+            }
+        }
+
+        results.sort((a, b) => new Date(b.created) - new Date(a.created));
+        return results;
+    }
+
+    /**
+     * 获取所有标签列表
+     */
+    listTags(level = null, agentName = null) {
+        const tagCount = {};
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter } = this.parseNote(content);
+                    
+                    const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+                    
+                    for (const tag of tags) {
+                        const normalizedTag = tag.toLowerCase();
+                        tagCount[normalizedTag] = (tagCount[normalizedTag] || 0) + 1;
+                    }
+                }
+            }
+        }
+
+        return tagCount;
     }
 
     /**
@@ -463,6 +609,11 @@ class MCPServer {
                             type: "string",
                             description: "Note content (supports Markdown)"
                         },
+                        tags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags for the note"
+                        },
                         agentName: {
                             type: "string",
                             description: "Agent name (required when level is 'agent')"
@@ -531,6 +682,11 @@ class MCPServer {
                         content: {
                             type: "string",
                             description: "New content for the note"
+                        },
+                        tags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "New tags (replaces existing tags)"
                         },
                         agentName: {
                             type: "string",
@@ -653,6 +809,48 @@ class MCPServer {
                     },
                     required: ["query"]
                 }
+            },
+            {
+                name: "list_notes_by_tag",
+                description: "List all notes with a specific tag",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        tag: {
+                            type: "string",
+                            description: "Tag to filter by"
+                        },
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level (optional, searches all levels if not specified)"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (optional, for agent-level search)"
+                        }
+                    },
+                    required: ["tag"]
+                }
+            },
+            {
+                name: "list_tags",
+                description: "List all tags with their usage counts",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level (optional, lists tags from all levels if not specified)"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (optional, for agent-level tags)"
+                        }
+                    },
+                    required: []
+                }
             }
         ];
     }
@@ -721,7 +919,8 @@ class MCPServer {
                         args.level,
                         args.title,
                         args.content,
-                        args.agentName
+                        args.agentName,
+                        args.tags
                     );
                     break;
 
@@ -738,7 +937,8 @@ class MCPServer {
                         args.level,
                         args.id,
                         args.content,
-                        args.agentName
+                        args.agentName,
+                        args.tags
                     );
                     break;
 
@@ -804,6 +1004,30 @@ class MCPServer {
                         results: searchResults,
                         count: searchResults.length,
                         totalMatches: searchResults.reduce((sum, r) => sum + r.matchCount, 0)
+                    };
+                    break;
+
+                case 'list_notes_by_tag':
+                    const tagResults = this.manager.listNotesByTag(
+                        args.tag,
+                        args.level,
+                        args.agentName
+                    );
+                    result = {
+                        tag: args.tag,
+                        notes: tagResults,
+                        count: tagResults.length
+                    };
+                    break;
+
+                case 'list_tags':
+                    const tags = this.manager.listTags(
+                        args.level,
+                        args.agentName
+                    );
+                    result = {
+                        tags: Object.entries(tags).map(([tag, count]) => ({ tag, count })),
+                        count: Object.keys(tags).length
                     };
                     break;
 

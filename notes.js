@@ -141,13 +141,22 @@ class NotesManager {
                 const key = line.substring(0, colonIndex).trim();
                 let value = line.substring(colonIndex + 1).trim();
                 
-                // 移除引号（如果有）
-                if ((value.startsWith('"') && value.endsWith('"')) || 
-                    (value.startsWith("'") && value.endsWith("'"))) {
-                    value = value.slice(1, -1);
+                // 解析数组格式 [item1, item2, ...]
+                if (value.startsWith('[') && value.endsWith(']')) {
+                    const arrayStr = value.slice(1, -1).trim();
+                    if (arrayStr === '') {
+                        frontmatter[key] = [];
+                    } else {
+                        frontmatter[key] = arrayStr.split(',').map(item => item.trim());
+                    }
+                } else {
+                    // 移除引号（如果有）
+                    if ((value.startsWith('"') && value.endsWith('"')) || 
+                        (value.startsWith("'") && value.endsWith("'"))) {
+                        value = value.slice(1, -1);
+                    }
+                    frontmatter[key] = value;
                 }
-                
-                frontmatter[key] = value;
             }
         }
 
@@ -163,9 +172,10 @@ class NotesManager {
      * @param {string} title - 笔记标题
      * @param {string} content - 笔记内容
      * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @param {Array<string>|null} tags - 标签数组
      * @returns {Object} 创建结果，包含笔记 ID、标题、路径等信息
      */
-    createNote(level, title, content, agentName = null) {
+    createNote(level, title, content, agentName = null, tags = null) {
         // 获取存储目录并确保目录存在
         const dir = this.getDir(level, agentName);
         fs.mkdirSync(dir, { recursive: true });
@@ -173,6 +183,9 @@ class NotesManager {
         // 生成唯一 ID 和当前时间戳
         const id = this.generateId();
         const now = new Date().toISOString();
+        
+        // 处理标签
+        const tagsStr = tags && tags.length > 0 ? `[${tags.join(', ')}]` : '[]';
         
         // 构建 YAML 前置元数据
         const frontmatter = [
@@ -183,6 +196,7 @@ class NotesManager {
             `updated: "${now}"`,
             `level: "${level}"`,
             agentName ? `agent: "${agentName}"` : null,
+            `tags: ${tagsStr}`,
             '---'
         ].filter(Boolean).join('\n');
         
@@ -200,6 +214,7 @@ class NotesManager {
             title,
             level,
             agentName,
+            tags: tags || [],
             path: filePath
         };
     }
@@ -234,7 +249,8 @@ class NotesManager {
                 created: frontmatter.created,
                 updated: frontmatter.updated,
                 level: frontmatter.level || level,
-                agentName: frontmatter.agent || agentName
+                agentName: frontmatter.agent || agentName,
+                tags: Array.isArray(frontmatter.tags) ? frontmatter.tags : []
             });
         }
         
@@ -297,9 +313,10 @@ class NotesManager {
      * @param {string} id - 笔记 ID
      * @param {string} content - 新的笔记内容
      * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @param {Array<string>|null} tags - 标签数组（可选）
      * @returns {Object} 更新结果
      */
-    updateNote(level, id, content, agentName = null) {
+    updateNote(level, id, content, agentName = null, tags = null) {
         const dir = this.getDir(level, agentName);
         const filePath = path.join(dir, `${id}.md`);
         
@@ -312,6 +329,10 @@ class NotesManager {
         const existingContent = fs.readFileSync(filePath, 'utf8');
         const { frontmatter } = this.parseNote(existingContent);
         
+        // 使用新标签或保留原有标签
+        const updatedTags = tags !== null ? tags : (Array.isArray(frontmatter.tags) ? frontmatter.tags : []);
+        const tagsStr = updatedTags.length > 0 ? `[${updatedTags.join(', ')}]` : '[]';
+        
         // 更新元数据中的时间戳，保留其他字段
         const updatedFrontmatter = [
             '---',
@@ -321,6 +342,7 @@ class NotesManager {
             `updated: "${new Date().toISOString()}"`,
             `level: "${frontmatter.level || level}"`,
             frontmatter.agent ? `agent: "${frontmatter.agent}"` : null,
+            `tags: ${tagsStr}`,
             '---'
         ].filter(Boolean).join('\n');
         
@@ -334,6 +356,7 @@ class NotesManager {
             title: frontmatter.title || 'Untitled',
             level: frontmatter.level || level,
             agentName: frontmatter.agent || agentName,
+            tags: updatedTags,
             path: filePath
         };
     }
@@ -364,6 +387,140 @@ class NotesManager {
             agentName,
             deleted: true
         };
+    }
+
+    /**
+     * 按标签列出笔记
+     * @param {string} tag - 标签名称
+     * @param {string|null} level - 存储级别（可选）
+     * @param {string|null} agentName - 代理名称（可选）
+     * @returns {Array} 包含指定标签的笔记列表
+     */
+    listNotesByTag(tag, level = null, agentName = null) {
+        const results = [];
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir, level: resultLevel, agent } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter } = this.parseNote(content);
+                    
+                    const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+                    
+                    // 检查标签是否匹配（不区分大小写）
+                    if (tags.some(t => t.toLowerCase() === tag.toLowerCase())) {
+                        results.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            created: frontmatter.created,
+                            updated: frontmatter.updated,
+                            level: resultLevel,
+                            agentName: agent,
+                            tags: tags
+                        });
+                    }
+                }
+            }
+        }
+
+        // 按创建时间降序排序（最新的在前）
+        results.sort((a, b) => new Date(b.created) - new Date(a.created));
+
+        return results;
+    }
+
+    /**
+     * 获取所有标签列表
+     * @param {string|null} level - 存储级别（可选）
+     * @param {string|null} agentName - 代理名称（可选）
+     * @returns {Object} 标签及其使用次数
+     */
+    listTags(level = null, agentName = null) {
+        const tagCount = {};
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter } = this.parseNote(content);
+                    
+                    const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+                    
+                    for (const tag of tags) {
+                        const normalizedTag = tag.toLowerCase();
+                        tagCount[normalizedTag] = (tagCount[normalizedTag] || 0) + 1;
+                    }
+                }
+            }
+        }
+
+        return tagCount;
     }
 
     /**
@@ -583,11 +740,15 @@ function main() {
                     process.exit(1);
                 }
                 
+                // 解析标签
+                const createTags = args.tags ? args.tags.split(',').map(t => t.trim()) : [];
+                
                 const createResult = manager.createNote(
                     args.level || 'workspace',
                     args.title,
                     args.content,
-                    args['agent-name']
+                    args['agent-name'],
+                    createTags
                 );
                 
                 console.log(JSON.stringify(createResult, null, 2));
@@ -595,10 +756,19 @@ function main() {
                 
             case 'list':
                 // 列出笔记命令
-                const listResult = manager.listNotes(
-                    args.level || 'workspace',
-                    args['agent-name']
-                );
+                let listResult;
+                if (args.tag) {
+                    // 按标签列出笔记
+                    listResult = {
+                        notes: manager.listNotesByTag(args.tag, args.level, args['agent-name']),
+                        tag: args.tag
+                    };
+                } else {
+                    listResult = manager.listNotes(
+                        args.level || 'workspace',
+                        args['agent-name']
+                    );
+                }
                 
                 console.log(JSON.stringify(listResult, null, 2));
                 break;
@@ -626,11 +796,15 @@ function main() {
                     process.exit(1);
                 }
                 
+                // 解析标签
+                const updateTags = args.tags ? args.tags.split(',').map(t => t.trim()) : null;
+                
                 const updateResult = manager.updateNote(
                     args.level || 'workspace',
                     args.id,
                     args.content,
-                    args['agent-name']
+                    args['agent-name'],
+                    updateTags
                 );
                 
                 console.log(JSON.stringify(updateResult, null, 2));
@@ -650,6 +824,18 @@ function main() {
                 );
                 
                 console.log(JSON.stringify(deleteResult, null, 2));
+                break;
+                
+            case 'tags':
+                // 列出所有标签
+                const tagsResult = manager.listTags(args.level, args['agent-name']);
+                const tagsArray = Object.entries(tagsResult).map(([tag, count]) => ({ tag, count }));
+                tagsArray.sort((a, b) => b.count - a.count);
+                
+                console.log(JSON.stringify({
+                    tags: tagsArray,
+                    count: tagsArray.length
+                }, null, 2));
                 break;
                 
             case 'jumpto':
@@ -741,14 +927,15 @@ function main() {
                 
             default:
                 // 无效命令，显示使用帮助
-                console.error('Error: Invalid command. Use create, list, read, update, delete, jumpto, parse-jumps, or search');
+                console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, or search');
                 console.error('Usage: node notes.js <command> [options]');
                 console.error('Commands:');
-                console.error('  create --level <global|workspace|agent> --title "<title>" --content "<content>" [--agent-name "<agent-name>"]');
-                console.error('  list --level <global|workspace|agent> [--agent-name "<agent-name>"]');
+                console.error('  create --level <global|workspace|agent> --title "<title>" --content "<content>" [--tags "tag1,tag2"] [--agent-name "<agent-name>"]');
+                console.error('  list --level <global|workspace|agent> [--tag "<tag>"] [--agent-name "<agent-name>"]');
                 console.error('  read --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
-                console.error('  update --level <global|workspace|agent> --id "<note-id>" --content "<content>" [--agent-name "<agent-name>"]');
+                console.error('  update --level <global|workspace|agent> --id "<note-id>" --content "<content>" [--tags "tag1,tag2"] [--agent-name "<agent-name>"]');
                 console.error('  delete --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
+                console.error('  tags [--level <global|workspace|agent>] [--agent-name "<agent-name>"]');
                 console.error('  jumpto --level <global|workspace|agent> --id "<note-id>" [--lineno <line>] [--column <col>] [--agent-name "<agent-name>"]');
                 console.error('  parse-jumps --content "<content-with-jumps>"');
                 console.error('  search --query "<keyword>" [--level <global|workspace|agent>] [--search-in <all|title|content>] [--case-sensitive true] [--whole-word true] [--regex true]');
