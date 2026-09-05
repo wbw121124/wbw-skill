@@ -1,0 +1,7 @@
+# WBW Skill
+
+忽略 junction 导致的循环引用
+.opencode/skills/wbw-skill/
+
+# 忽略测试生成的笔记目录
+.wbw-skill/
