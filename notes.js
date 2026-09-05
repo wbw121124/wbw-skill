@@ -249,9 +249,10 @@ class NotesManager {
      * @param {string} level - 存储级别
      * @param {string} id - 笔记 ID
      * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @param {boolean} parseJumps - 是否解析跳转语法（默认 true）
      * @returns {Object} 笔记的完整信息，包括元数据和内容
      */
-    readNote(level, id, agentName = null) {
+    readNote(level, id, agentName = null, parseJumps = true) {
         const dir = this.getDir(level, agentName);
         const filePath = path.join(dir, `${id}.md`);
         
@@ -264,7 +265,7 @@ class NotesManager {
         const content = fs.readFileSync(filePath, 'utf8');
         const { frontmatter, content: noteContent } = this.parseNote(content);
         
-        return {
+        const result = {
             id: frontmatter.id || id,
             title: frontmatter.title || 'Untitled',
             content: noteContent,
@@ -274,6 +275,20 @@ class NotesManager {
             agentName: frontmatter.agent || agentName,
             path: filePath
         };
+
+        // 解析跳转语法
+        if (parseJumps) {
+            const jumps = JumpToParser.parse(noteContent);
+            if (jumps.length > 0) {
+                result.jumps = jumps.map(j => ({
+                    original: j.fullMatch,
+                    target: JumpToParser.toTarget(j),
+                    description: JumpToParser.toDescription(j)
+                }));
+            }
+        }
+
+        return result;
     }
 
     /**
