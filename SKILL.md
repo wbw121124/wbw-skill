@@ -10,31 +10,66 @@ This skill provides a notepad/memo system for LLMs with three storage levels:
 - **Workspace**: Specific to the current project/workspace
 - **Agent**: Specific to the current agent
 
-## Tools
+## Tool: notes
 
-### 1. Create Note
-```bash
-node notes.js create --level <global|workspace|agent> --title "<title>" --content "<content>" [--agent-name "<agent-name>"]
+A unified tool for managing notes with the following parameters:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | Action: create, list, read, update, delete |
+| `level` | string | No | Storage level: global, workspace, agent (default: workspace) |
+| `title` | string | For create | Note title |
+| `content` | string | For create/update | Note content |
+| `id` | string | For read/update/delete | Note ID |
+| `agentName` | string | For agent level | Agent name |
+
+## Usage Examples
+
+### 1. Create a Global Note
+```json
+{
+  "action": "create",
+  "level": "global",
+  "title": "My Global Note",
+  "content": "This is a global note shared across all projects."
+}
 ```
 
-### 2. List Notes
-```bash
-node notes.js list --level <global|workspace|agent> [--agent-name "<agent-name>"]
+### 2. List Workspace Notes
+```json
+{
+  "action": "list",
+  "level": "workspace"
+}
 ```
 
-### 3. Read Note
-```bash
-node notes.js read --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]
+### 3. Read an Agent-Specific Note
+```json
+{
+  "action": "read",
+  "level": "agent",
+  "id": "note-1234567890-abc123",
+  "agentName": "code-reviewer"
+}
 ```
 
-### 4. Update Note
-```bash
-node notes.js update --level <global|workspace|agent> --id "<note-id>" --content "<content>" [--agent-name "<agent-name>"]
+### 4. Update a Note
+```json
+{
+  "action": "update",
+  "level": "workspace",
+  "id": "note-1234567890-abc123",
+  "content": "Updated content here..."
+}
 ```
 
-### 5. Delete Note
-```bash
-node notes.js delete --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]
+### 5. Delete a Note
+```json
+{
+  "action": "delete",
+  "level": "global",
+  "id": "note-1234567890-abc123"
+}
 ```
 
 ## Storage Locations
@@ -58,27 +93,13 @@ level: "global|workspace|agent"
 Note content here...
 ```
 
-## Usage Examples
+## CLI Alternative
 
-1. Create a global note:
-   ```bash
-   node notes.js create --level global --title "My Global Note" --content "This is a global note."
-   ```
-
-2. List workspace notes:
-   ```bash
-   node notes.js list --level workspace
-   ```
-
-3. Read an agent-specific note:
-   ```bash
-   node notes.js read --level agent --id "note-123" --agent-name "my-agent"
-   ```
-
-## Implementation Notes
-
-- The `notes.js` script handles all note operations
-- Notes are stored as individual Markdown files
-- Each note has a unique ID (timestamp-based)
-- The script automatically creates necessary directories
-- Agent-level notes require `--agent-name` parameter
+You can also use the CLI script directly:
+```bash
+node notes.js create --level global --title "My Note" --content "Content"
+node notes.js list --level workspace
+node notes.js read --level agent --id "note-123" --agent-name "my-agent"
+node notes.js update --level workspace --id "note-123" --content "New content"
+node notes.js delete --level global --id "note-123"
+```
