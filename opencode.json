@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "username": "wbw121124",
+  "skills": {
+    "paths": [".opencode/skills/wbw-skill"]
+  },
+  "mcp": {
+    "notes": {
+      "type": "local",
+      "command": ["node", ".opencode/mcp/server.js"],
+      "enabled": true
+    }
+  },
+  "plugin": [
+    "./.opencode/plugin/notes.js"
+  ]
+}
