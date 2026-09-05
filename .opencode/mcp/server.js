@@ -283,6 +283,151 @@ class NotesManager {
         
         return { deleted: true };
     }
+
+    /**
+     * 搜索笔记
+     */
+    searchNotes(query, level = null, agentName = null, options = {}) {
+        const { 
+            caseSensitive = false, 
+            wholeWord = false, 
+            regex = false,
+            searchIn = 'all' 
+        } = options;
+
+        const results = [];
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir, level: resultLevel, agent } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+
+                    let searchTargets = [];
+                    if (searchIn === 'all' || searchIn === 'title') {
+                        searchTargets.push({ type: 'title', text: frontmatter.title || '' });
+                    }
+                    if (searchIn === 'all' || searchIn === 'content') {
+                        searchTargets.push({ type: 'content', text: noteContent });
+                    }
+
+                    const matches = [];
+                    for (const target of searchTargets) {
+                        const searchMatches = this.findMatches(
+                            target.text, 
+                            query, 
+                            { caseSensitive, wholeWord, regex }
+                        );
+                        for (const match of searchMatches) {
+                            matches.push({
+                                type: target.type,
+                                line: match.line,
+                                column: match.column,
+                                text: match.text,
+                                context: match.context
+                            });
+                        }
+                    }
+
+                    if (matches.length > 0) {
+                        results.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            level: resultLevel,
+                            agentName: agent,
+                            path: filePath,
+                            matches: matches,
+                            matchCount: matches.length
+                        });
+                    }
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * 在文本中查找匹配项
+     */
+    findMatches(text, query, options = {}) {
+        const { caseSensitive = false, wholeWord = false, regex = false } = options;
+        const matches = [];
+
+        let pattern;
+        if (regex) {
+            try {
+                pattern = new RegExp(query, caseSensitive ? 'g' : 'gi');
+            } catch (e) {
+                throw new Error(`Invalid regex pattern: ${query}`);
+            }
+        } else {
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const wordBoundary = wholeWord ? '\\b' : '';
+            pattern = new RegExp(`${wordBoundary}${escapedQuery}${wordBoundary}`, caseSensitive ? 'g' : 'gi');
+        }
+
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            let match;
+            pattern.lastIndex = 0;
+
+            while ((match = pattern.exec(line)) !== null) {
+                const start = Math.max(0, match.index - 30);
+                const end = Math.min(line.length, match.index + match[0].length + 30);
+                const context = (start > 0 ? '...' : '') + 
+                               line.substring(start, end) + 
+                               (end < line.length ? '...' : '');
+
+                matches.push({
+                    line: i + 1,
+                    column: match.index + 1,
+                    text: match[0],
+                    context: context
+                });
+
+                if (match[0].length === 0) {
+                    pattern.lastIndex++;
+                }
+            }
+        }
+
+        return matches;
+    }
 }
 
 /**
@@ -464,6 +609,50 @@ class MCPServer {
                     },
                     required: ["content"]
                 }
+            },
+            {
+                name: "search_notes",
+                description: "Search notes by keyword in title or content",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        query: {
+                            type: "string",
+                            description: "Search keyword or pattern"
+                        },
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level to search (optional, searches all levels if not specified)"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (optional, for agent-level search)"
+                        },
+                        caseSensitive: {
+                            type: "boolean",
+                            description: "Case-sensitive search (default: false)",
+                            default: false
+                        },
+                        wholeWord: {
+                            type: "boolean",
+                            description: "Whole word match (default: false)",
+                            default: false
+                        },
+                        regex: {
+                            type: "boolean",
+                            description: "Use regex pattern (default: false)",
+                            default: false
+                        },
+                        searchIn: {
+                            type: "string",
+                            enum: ["all", "title", "content"],
+                            description: "Search scope: all, title, content (default: all)",
+                            default: "all"
+                        }
+                    },
+                    required: ["query"]
+                }
             }
         ];
     }
@@ -594,6 +783,27 @@ class MCPServer {
                             description: JumpToParser.toDescription(j)
                         })),
                         count: jumps.length
+                    };
+                    break;
+
+                case 'search_notes':
+                    const searchOptions = {
+                        caseSensitive: args.caseSensitive || false,
+                        wholeWord: args.wholeWord || false,
+                        regex: args.regex || false,
+                        searchIn: args.searchIn || 'all'
+                    };
+                    const searchResults = this.manager.searchNotes(
+                        args.query,
+                        args.level,
+                        args.agentName,
+                        searchOptions
+                    );
+                    result = {
+                        query: args.query,
+                        results: searchResults,
+                        count: searchResults.length,
+                        totalMatches: searchResults.reduce((sum, r) => sum + r.matchCount, 0)
                     };
                     break;
 

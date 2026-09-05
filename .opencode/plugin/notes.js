@@ -303,13 +303,13 @@ export default async ({ client, project, directory, $ }) => {
              * 笔记管理工具
              */
             notes: {
-                description: "Manage notes/memos with global, workspace, and agent-level storage. Use for creating, reading, updating, or deleting notes.",
+                description: "Manage notes/memos with global, workspace, and agent-level storage. Use for creating, reading, updating, deleting, or searching notes.",
                 parameters: {
                     type: "object",
                     properties: {
                         action: {
                             type: "string",
-                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps"],
+                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search"],
                             description: "The action to perform"
                         },
                         level: {
@@ -343,12 +343,37 @@ export default async ({ client, project, directory, $ }) => {
                             type: "integer",
                             description: "Target column number (for jumpto action)",
                             minimum: 1
+                        },
+                        query: {
+                            type: "string",
+                            description: "Search keyword (required for search action)"
+                        },
+                        caseSensitive: {
+                            type: "boolean",
+                            description: "Case-sensitive search (default: false)",
+                            default: false
+                        },
+                        wholeWord: {
+                            type: "boolean",
+                            description: "Whole word match (default: false)",
+                            default: false
+                        },
+                        regex: {
+                            type: "boolean",
+                            description: "Use regex pattern (default: false)",
+                            default: false
+                        },
+                        searchIn: {
+                            type: "string",
+                            enum: ["all", "title", "content"],
+                            description: "Search scope: all, title, content (default: all)",
+                            default: "all"
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, id, agentName, lineno, column } = args;
+                    const { action, level, title, content, id, agentName, lineno, column, query, caseSensitive, wholeWord, regex, searchIn } = args;
 
                     try {
                         switch (action) {
@@ -417,8 +442,26 @@ export default async ({ client, project, directory, $ }) => {
                                     count: jumps.length
                                 };
 
+                            case 'search':
+                                if (!query) {
+                                    return { error: "Query is required for search action" };
+                                }
+                                const searchOptions = {
+                                    caseSensitive: caseSensitive || false,
+                                    wholeWord: wholeWord || false,
+                                    regex: regex || false,
+                                    searchIn: searchIn || 'all'
+                                };
+                                const searchResults = manager.searchNotes(query, level, agentName, searchOptions);
+                                return {
+                                    query: query,
+                                    results: searchResults,
+                                    count: searchResults.length,
+                                    totalMatches: searchResults.reduce((sum, r) => sum + r.matchCount, 0)
+                                };
+
                             default:
-                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, or parse_jumps.` };
+                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, or search.` };
                         }
                     } catch (error) {
                         return { error: error.message };

@@ -365,6 +365,169 @@ class NotesManager {
             deleted: true
         };
     }
+
+    /**
+     * 搜索笔记
+     * @param {string} query - 搜索关键词
+     * @param {string|null} level - 存储级别（可选，不指定则搜索所有级别）
+     * @param {string|null} agentName - 代理名称（可选）
+     * @param {Object} options - 搜索选项
+     * @param {boolean} options.caseSensitive - 是否区分大小写（默认 false）
+     * @param {boolean} options.wholeWord - 是否全词匹配（默认 false）
+     * @param {boolean} options.regex - 是否使用正则表达式（默认 false）
+     * @param {string} options.searchIn - 搜索范围：all, title, content（默认 all）
+     * @returns {Array} 搜索结果
+     */
+    searchNotes(query, level = null, agentName = null, options = {}) {
+        const { 
+            caseSensitive = false, 
+            wholeWord = false, 
+            regex = false,
+            searchIn = 'all' 
+        } = options;
+
+        const results = [];
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                // 搜索特定代理的笔记
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                // 搜索所有代理的笔记
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir, level: resultLevel, agent } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+
+                    // 构建搜索目标
+                    let searchTargets = [];
+                    if (searchIn === 'all' || searchIn === 'title') {
+                        searchTargets.push({ type: 'title', text: frontmatter.title || '' });
+                    }
+                    if (searchIn === 'all' || searchIn === 'content') {
+                        searchTargets.push({ type: 'content', text: noteContent });
+                    }
+
+                    // 执行搜索
+                    const matches = [];
+                    for (const target of searchTargets) {
+                        const searchMatches = this.findMatches(
+                            target.text, 
+                            query, 
+                            { caseSensitive, wholeWord, regex }
+                        );
+                        for (const match of searchMatches) {
+                            matches.push({
+                                type: target.type,
+                                line: match.line,
+                                column: match.column,
+                                text: match.text,
+                                context: match.context
+                            });
+                        }
+                    }
+
+                    if (matches.length > 0) {
+                        results.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            level: resultLevel,
+                            agentName: agent,
+                            path: filePath,
+                            matches: matches,
+                            matchCount: matches.length
+                        });
+                    }
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * 在文本中查找匹配项
+     * @param {string} text - 要搜索的文本
+     * @param {string} query - 搜索关键词
+     * @param {Object} options - 搜索选项
+     * @returns {Array} 匹配项数组
+     */
+    findMatches(text, query, options = {}) {
+        const { caseSensitive = false, wholeWord = false, regex = false } = options;
+        const matches = [];
+
+        let pattern;
+        if (regex) {
+            try {
+                pattern = new RegExp(query, caseSensitive ? 'g' : 'gi');
+            } catch (e) {
+                throw new Error(`Invalid regex pattern: ${query}`);
+            }
+        } else {
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const wordBoundary = wholeWord ? '\\b' : '';
+            pattern = new RegExp(`${wordBoundary}${escapedQuery}${wordBoundary}`, caseSensitive ? 'g' : 'gi');
+        }
+
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            let match;
+            pattern.lastIndex = 0;
+
+            while ((match = pattern.exec(line)) !== null) {
+                const start = Math.max(0, match.index - 30);
+                const end = Math.min(line.length, match.index + match[0].length + 30);
+                const context = (start > 0 ? '...' : '') + 
+                               line.substring(start, end) + 
+                               (end < line.length ? '...' : '');
+
+                matches.push({
+                    line: i + 1,
+                    column: match.index + 1,
+                    text: match[0],
+                    context: context
+                });
+
+                // 防止零宽度匹配导致无限循环
+                if (match[0].length === 0) {
+                    pattern.lastIndex++;
+                }
+            }
+        }
+
+        return matches;
+    }
 }
 
 /**
@@ -547,9 +710,38 @@ function main() {
                 console.log(JSON.stringify(parseResult, null, 2));
                 break;
                 
+            case 'search':
+                // 搜索笔记
+                if (!args.query) {
+                    console.error('Error: --query is required for search command');
+                    process.exit(1);
+                }
+                
+                const searchOptions = {
+                    caseSensitive: args['case-sensitive'] === 'true',
+                    wholeWord: args['whole-word'] === 'true',
+                    regex: args.regex === 'true',
+                    searchIn: args['search-in'] || 'all'
+                };
+                
+                const searchResults = manager.searchNotes(
+                    args.query,
+                    args.level || null,
+                    args['agent-name'],
+                    searchOptions
+                );
+                
+                console.log(JSON.stringify({
+                    query: args.query,
+                    results: searchResults,
+                    count: searchResults.length,
+                    totalMatches: searchResults.reduce((sum, r) => sum + r.matchCount, 0)
+                }, null, 2));
+                break;
+                
             default:
                 // 无效命令，显示使用帮助
-                console.error('Error: Invalid command. Use create, list, read, update, delete, jumpto, or parse-jumps');
+                console.error('Error: Invalid command. Use create, list, read, update, delete, jumpto, parse-jumps, or search');
                 console.error('Usage: node notes.js <command> [options]');
                 console.error('Commands:');
                 console.error('  create --level <global|workspace|agent> --title "<title>" --content "<content>" [--agent-name "<agent-name>"]');
@@ -559,6 +751,7 @@ function main() {
                 console.error('  delete --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
                 console.error('  jumpto --level <global|workspace|agent> --id "<note-id>" [--lineno <line>] [--column <col>] [--agent-name "<agent-name>"]');
                 console.error('  parse-jumps --content "<content-with-jumps>"');
+                console.error('  search --query "<keyword>" [--level <global|workspace|agent>] [--search-in <all|title|content>] [--case-sensitive true] [--whole-word true] [--regex true]');
                 process.exit(1);
         }
     } catch (error) {
