@@ -13,6 +13,64 @@ const path = require('path');
 const os = require('os');
 
 /**
+ * 跳转语法解析器
+ * 支持格式: [@jumpto level,agent,id:lineno:column]
+ */
+class JumpToParser {
+    /**
+     * 解析跳转语法
+     * @param {string} content - 包含跳转语法的内容
+     * @returns {Array} 解析后的跳转链接数组
+     */
+    static parse(content) {
+        const regex = /\[@jumpto\s+([^,\s]+)(?:,([^,\s]*))?,([^:]+)(?::(\d+))?(?::(\d+))?\]/g;
+        const jumps = [];
+        let match;
+
+        while ((match = regex.exec(content)) !== null) {
+            jumps.push({
+                fullMatch: match[0],
+                level: match[1],
+                agent: match[2] || null,
+                id: match[3],
+                lineno: match[4] ? parseInt(match[4]) : null,
+                column: match[5] ? parseInt(match[5]) : null
+            });
+        }
+
+        return jumps;
+    }
+
+    /**
+     * 将跳转语法转换为可读的链接描述
+     * @param {Object} jump - 解析后的跳转对象
+     * @returns {string} 可读的链接描述
+     */
+    static toDescription(jump) {
+        let desc = `→ ${jump.level}/${jump.id}`;
+        if (jump.agent) desc = `→ ${jump.level}/${jump.agent}/${jump.id}`;
+        if (jump.lineno) desc += `:${jump.lineno}`;
+        if (jump.column) desc += `:${jump.column}`;
+        return desc;
+    }
+
+    /**
+     * 将跳转语法转换为统一的跳转目标格式
+     * @param {Object} jump - 解析后的跳转对象
+     * @returns {Object} 跳转目标对象
+     */
+    static toTarget(jump) {
+        return {
+            level: jump.level,
+            agent: jump.agent,
+            id: jump.id,
+            lineno: jump.lineno || 1,
+            column: jump.column || 1
+        };
+    }
+}
+
+/**
  * 笔记管理器类
  */
 class NotesManager {
@@ -138,7 +196,7 @@ class NotesManager {
         return { notes, count: notes.length };
     }
 
-    readNote(level, id, agentName = null) {
+    readNote(level, id, agentName = null, parseJumps = true) {
         const dir = this.getDir(level, agentName);
         const filePath = path.join(dir, `${id}.md`);
         
@@ -149,7 +207,7 @@ class NotesManager {
         const content = fs.readFileSync(filePath, 'utf8');
         const { frontmatter, content: noteContent } = this.parseNote(content);
         
-        return {
+        const result = {
             id: frontmatter.id || id,
             title: frontmatter.title || 'Untitled',
             content: noteContent,
@@ -159,6 +217,20 @@ class NotesManager {
             agentName: frontmatter.agent || agentName,
             path: filePath
         };
+
+        // 解析跳转语法
+        if (parseJumps) {
+            const jumps = JumpToParser.parse(noteContent);
+            if (jumps.length > 0) {
+                result.jumps = jumps.map(j => ({
+                    original: j.fullMatch,
+                    target: JumpToParser.toTarget(j),
+                    description: JumpToParser.toDescription(j)
+                }));
+            }
+        }
+
+        return result;
     }
 
     updateNote(level, id, content, agentName = null) {
@@ -237,7 +309,7 @@ export default async ({ client, project, directory, $ }) => {
                     properties: {
                         action: {
                             type: "string",
-                            enum: ["create", "list", "read", "update", "delete"],
+                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps"],
                             description: "The action to perform"
                         },
                         level: {
@@ -261,12 +333,22 @@ export default async ({ client, project, directory, $ }) => {
                         agentName: {
                             type: "string",
                             description: "Agent name (required for agent-level notes)"
+                        },
+                        lineno: {
+                            type: "integer",
+                            description: "Target line number (for jumpto action)",
+                            minimum: 1
+                        },
+                        column: {
+                            type: "integer",
+                            description: "Target column number (for jumpto action)",
+                            minimum: 1
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, id, agentName } = args;
+                    const { action, level, title, content, id, agentName, lineno, column } = args;
 
                     try {
                         switch (action) {
@@ -297,8 +379,46 @@ export default async ({ client, project, directory, $ }) => {
                                 }
                                 return manager.deleteNote(level || 'workspace', id, agentName);
 
+                            case 'jumpto':
+                                if (!id) {
+                                    return { error: "ID is required for jumpto action" };
+                                }
+                                const jumptoResult = manager.readNote(level || 'workspace', id, agentName, false);
+                                jumptoResult.jumpTarget = {
+                                    level: level || 'workspace',
+                                    id: id,
+                                    agent: agentName,
+                                    lineno: lineno || 1,
+                                    column: column || 1
+                                };
+                                if (lineno) {
+                                    const lines = jumptoResult.content.split('\n');
+                                    if (lineno <= lines.length) {
+                                        jumptoResult.targetLine = lines[lineno - 1];
+                                        jumptoResult.targetLineContent = lines.slice(
+                                            Math.max(0, lineno - 3),
+                                            Math.min(lines.length, lineno + 2)
+                                        ).join('\n');
+                                    }
+                                }
+                                return jumptoResult;
+
+                            case 'parse_jumps':
+                                if (!content) {
+                                    return { error: "Content is required for parse_jumps action" };
+                                }
+                                const jumps = JumpToParser.parse(content);
+                                return {
+                                    jumps: jumps.map(j => ({
+                                        original: j.fullMatch,
+                                        target: JumpToParser.toTarget(j),
+                                        description: JumpToParser.toDescription(j)
+                                    })),
+                                    count: jumps.length
+                                };
+
                             default:
-                                return { error: `Invalid action: ${action}. Use create, list, read, update, or delete.` };
+                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, or parse_jumps.` };
                         }
                     } catch (error) {
                         return { error: error.message };

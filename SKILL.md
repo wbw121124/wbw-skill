@@ -93,6 +93,61 @@ level: "global|workspace|agent"
 Note content here...
 ```
 
+## Jump Syntax
+
+The skill supports custom jump syntax for linking between notes:
+
+```
+[@jumpto level,agent,id:lineno:column]
+```
+
+| Part | Description | Required |
+|------|-------------|----------|
+| `level` | Target level: global, workspace, agent | Yes |
+| `agent` | Agent name (for agent level) | No |
+| `id` | Target note ID | Yes |
+| `lineno` | Target line number | No |
+| `column` | Target column number | No |
+
+### Examples
+
+```markdown
+See [@jumpto global,,note-123] for more details.
+
+Jump to line 10: [@jumpto workspace,,note-456:10]
+
+Jump to specific position: [@jumpto agent,my-agent,note-789:15:5]
+```
+
+### Parse Jumps Tool
+
+Use `parse_jumps` to extract all jump targets from content:
+
+```json
+{
+  "tool": "parse_jumps",
+  "arguments": {
+    "content": "See [@jumpto global,,note-123] for details."
+  }
+}
+```
+
+### JumpTo Tool
+
+Use `jumpto` to navigate to a specific location:
+
+```json
+{
+  "tool": "jumpto",
+  "arguments": {
+    "level": "global",
+    "id": "note-123",
+    "lineno": 10,
+    "column": 5
+  }
+}
+```
+
 ## CLI Alternative
 
 You can also use the CLI script directly:

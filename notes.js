@@ -13,6 +13,64 @@ const path = require('path');
 const os = require('os');
 
 /**
+ * 跳转语法解析器
+ * 支持格式: [@jumpto level,agent,id:lineno:column]
+ */
+class JumpToParser {
+    /**
+     * 解析跳转语法
+     * @param {string} content - 包含跳转语法的内容
+     * @returns {Array} 解析后的跳转链接数组
+     */
+    static parse(content) {
+        const regex = /\[@jumpto\s+([^,\s]+)(?:,([^,\s]*))?,([^:]+)(?::(\d+))?(?::(\d+))?\]/g;
+        const jumps = [];
+        let match;
+
+        while ((match = regex.exec(content)) !== null) {
+            jumps.push({
+                fullMatch: match[0],
+                level: match[1],
+                agent: match[2] || null,
+                id: match[3],
+                lineno: match[4] ? parseInt(match[4]) : null,
+                column: match[5] ? parseInt(match[5]) : null
+            });
+        }
+
+        return jumps;
+    }
+
+    /**
+     * 将跳转语法转换为可读的链接描述
+     * @param {Object} jump - 解析后的跳转对象
+     * @returns {string} 可读的链接描述
+     */
+    static toDescription(jump) {
+        let desc = `→ ${jump.level}/${jump.id}`;
+        if (jump.agent) desc = `→ ${jump.level}/${jump.agent}/${jump.id}`;
+        if (jump.lineno) desc += `:${jump.lineno}`;
+        if (jump.column) desc += `:${jump.column}`;
+        return desc;
+    }
+
+    /**
+     * 将跳转语法转换为统一的跳转目标格式
+     * @param {Object} jump - 解析后的跳转对象
+     * @returns {Object} 跳转目标对象
+     */
+    static toTarget(jump) {
+        return {
+            level: jump.level,
+            agent: jump.agent,
+            id: jump.id,
+            lineno: jump.lineno || 1,
+            column: jump.column || 1
+        };
+    }
+}
+
+/**
  * 笔记管理器类
  * 负责笔记的增删改查操作
  */
@@ -416,9 +474,67 @@ function main() {
                 console.log(JSON.stringify(deleteResult, null, 2));
                 break;
                 
+            case 'jumpto':
+                // 跳转到笔记指定位置
+                if (!args.id) {
+                    console.error('Error: --id is required for jumpto command');
+                    process.exit(1);
+                }
+                
+                const jumptoResult = manager.readNote(
+                    args.level || 'workspace',
+                    args.id,
+                    args['agent-name']
+                );
+                
+                // 添加跳转位置信息
+                jumptoResult.jumpTarget = {
+                    level: args.level || 'workspace',
+                    id: args.id,
+                    agent: args['agent-name'],
+                    lineno: args.lineno ? parseInt(args.lineno) : 1,
+                    column: args.column ? parseInt(args.column) : 1
+                };
+                
+                // 读取指定行的内容
+                if (args.lineno) {
+                    const lines = jumptoResult.content.split('\n');
+                    const lineNum = parseInt(args.lineno);
+                    if (lineNum <= lines.length) {
+                        jumptoResult.targetLine = lines[lineNum - 1];
+                        jumptoResult.targetLineContent = lines.slice(
+                            Math.max(0, lineNum - 3),
+                            Math.min(lines.length, lineNum + 2)
+                        ).join('\n');
+                    }
+                }
+                
+                console.log(JSON.stringify(jumptoResult, null, 2));
+                break;
+                
+            case 'parse-jumps':
+                // 解析跳转语法
+                if (!args.content) {
+                    console.error('Error: --content is required for parse-jumps command');
+                    process.exit(1);
+                }
+                
+                const jumps = JumpToParser.parse(args.content);
+                const parseResult = {
+                    jumps: jumps.map(j => ({
+                        original: j.fullMatch,
+                        target: JumpToParser.toTarget(j),
+                        description: JumpToParser.toDescription(j)
+                    })),
+                    count: jumps.length
+                };
+                
+                console.log(JSON.stringify(parseResult, null, 2));
+                break;
+                
             default:
                 // 无效命令，显示使用帮助
-                console.error('Error: Invalid command. Use create, list, read, update, or delete');
+                console.error('Error: Invalid command. Use create, list, read, update, delete, jumpto, or parse-jumps');
                 console.error('Usage: node notes.js <command> [options]');
                 console.error('Commands:');
                 console.error('  create --level <global|workspace|agent> --title "<title>" --content "<content>" [--agent-name "<agent-name>"]');
@@ -426,6 +542,8 @@ function main() {
                 console.error('  read --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
                 console.error('  update --level <global|workspace|agent> --id "<note-id>" --content "<content>" [--agent-name "<agent-name>"]');
                 console.error('  delete --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
+                console.error('  jumpto --level <global|workspace|agent> --id "<note-id>" [--lineno <line>] [--column <col>] [--agent-name "<agent-name>"]');
+                console.error('  parse-jumps --content "<content-with-jumps>"');
                 process.exit(1);
         }
     } catch (error) {

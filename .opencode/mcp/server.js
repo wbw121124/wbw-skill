@@ -16,6 +16,64 @@ const os = require('os');
 const readline = require('readline');
 
 /**
+ * 跳转语法解析器
+ * 支持格式: [@jumpto level,agent,id:lineno:column]
+ */
+class JumpToParser {
+    /**
+     * 解析跳转语法
+     * @param {string} content - 包含跳转语法的内容
+     * @returns {Array} 解析后的跳转链接数组
+     */
+    static parse(content) {
+        const regex = /\[@jumpto\s+([^,\s]+)(?:,([^,\s]*))?,([^:]+)(?::(\d+))?(?::(\d+))?\]/g;
+        const jumps = [];
+        let match;
+
+        while ((match = regex.exec(content)) !== null) {
+            jumps.push({
+                fullMatch: match[0],
+                level: match[1],
+                agent: match[2] || null,
+                id: match[3],
+                lineno: match[4] ? parseInt(match[4]) : null,
+                column: match[5] ? parseInt(match[5]) : null
+            });
+        }
+
+        return jumps;
+    }
+
+    /**
+     * 将跳转语法转换为可读的链接描述
+     * @param {Object} jump - 解析后的跳转对象
+     * @returns {string} 可读的链接描述
+     */
+    static toDescription(jump) {
+        let desc = `→ ${jump.level}/${jump.id}`;
+        if (jump.agent) desc = `→ ${jump.level}/${jump.agent}/${jump.id}`;
+        if (jump.lineno) desc += `:${jump.lineno}`;
+        if (jump.column) desc += `:${jump.column}`;
+        return desc;
+    }
+
+    /**
+     * 将跳转语法转换为统一的跳转目标格式
+     * @param {Object} jump - 解析后的跳转对象
+     * @returns {Object} 跳转目标对象
+     */
+    static toTarget(jump) {
+        return {
+            level: jump.level,
+            agent: jump.agent,
+            id: jump.id,
+            lineno: jump.lineno || 1,
+            column: jump.column || 1
+        };
+    }
+}
+
+/**
  * 笔记管理器类
  */
 class NotesManager {
@@ -142,7 +200,7 @@ class NotesManager {
         return notes;
     }
 
-    readNote(level, id, agentName = null) {
+    readNote(level, id, agentName = null, parseJumps = true) {
         const dir = this.getDir(level, agentName);
         const filePath = path.join(dir, `${id}.md`);
         
@@ -153,15 +211,30 @@ class NotesManager {
         const content = fs.readFileSync(filePath, 'utf8');
         const { frontmatter, content: noteContent } = this.parseNote(content);
         
-        return {
+        const result = {
             id: frontmatter.id || id,
             title: frontmatter.title || 'Untitled',
             content: noteContent,
             created: frontmatter.created,
             updated: frontmatter.updated,
             level: frontmatter.level || level,
-            agentName: frontmatter.agent || agentName
+            agentName: frontmatter.agent || agentName,
+            path: filePath
         };
+
+        // 解析跳转语法
+        if (parseJumps) {
+            const jumps = JumpToParser.parse(noteContent);
+            if (jumps.length > 0) {
+                result.jumps = jumps.map(j => ({
+                    original: j.fullMatch,
+                    target: JumpToParser.toTarget(j),
+                    description: JumpToParser.toDescription(j)
+                }));
+            }
+        }
+
+        return result;
     }
 
     updateNote(level, id, content, agentName = null) {
@@ -344,6 +417,53 @@ class MCPServer {
                     },
                     required: ["level", "id"]
                 }
+            },
+            {
+                name: "jumpto",
+                description: "Jump to a specific location in a note using [@jumpto level,agent,id:lineno:column] syntax",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Target storage level"
+                        },
+                        id: {
+                            type: "string",
+                            description: "Target note ID"
+                        },
+                        lineno: {
+                            type: "integer",
+                            description: "Target line number (default: 1)",
+                            minimum: 1
+                        },
+                        column: {
+                            type: "integer",
+                            description: "Target column number (default: 1)",
+                            minimum: 1
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "id"]
+                }
+            },
+            {
+                name: "parse_jumps",
+                description: "Parse [@jumpto] syntax in content and return all jump targets",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        content: {
+                            type: "string",
+                            description: "Content containing [@jumpto] syntax"
+                        }
+                    },
+                    required: ["content"]
+                }
             }
         ];
     }
@@ -435,6 +555,46 @@ class MCPServer {
 
                 case 'delete_note':
                     result = this.manager.deleteNote(args.level, args.id, args.agentName);
+                    break;
+
+                case 'jumpto':
+                    result = this.manager.readNote(
+                        args.level,
+                        args.id,
+                        args.agentName,
+                        false
+                    );
+                    // 添加跳转位置信息
+                    result.jumpTarget = {
+                        level: args.level,
+                        id: args.id,
+                        agent: args.agentName,
+                        lineno: args.lineno || 1,
+                        column: args.column || 1
+                    };
+                    // 读取指定行的内容
+                    if (args.lineno) {
+                        const lines = result.content.split('\n');
+                        if (args.lineno <= lines.length) {
+                            result.targetLine = lines[args.lineno - 1];
+                            result.targetLineContent = lines.slice(
+                                Math.max(0, args.lineno - 3),
+                                Math.min(lines.length, args.lineno + 2)
+                            ).join('\n');
+                        }
+                    }
+                    break;
+
+                case 'parse_jumps':
+                    const jumps = JumpToParser.parse(args.content);
+                    result = {
+                        jumps: jumps.map(j => ({
+                            original: j.fullMatch,
+                            target: JumpToParser.toTarget(j),
+                            description: JumpToParser.toDescription(j)
+                        })),
+                        count: jumps.length
+                    };
                     break;
 
                 default:
