@@ -1,6 +1,6 @@
 ---
 name: wbw-skill
-description: A notepad/memo system for LLMs with global, workspace, and agent-level storage. Use when the user wants to create, read, update, or delete notes/memos. Use ONLY for note-taking tasks.
+description: A notepad/memo system for LLMs with global, workspace, and agent-level storage. Use when the user wants to create, read, update, delete, or search notes/memos. Use ONLY for note-taking tasks.
 ---
 
 # WBW Skill - LLM Notepad/Memo System
@@ -16,12 +16,17 @@ A unified tool for managing notes with the following parameters:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | string | Yes | Action: create, list, read, update, delete |
+| `action` | string | Yes | Action: create, list, read, update, delete, search |
 | `level` | string | No | Storage level: global, workspace, agent (default: workspace) |
 | `title` | string | For create | Note title |
 | `content` | string | For create/update | Note content |
 | `id` | string | For read/update/delete | Note ID |
 | `agentName` | string | For agent level | Agent name |
+| `query` | string | For search | Search keyword |
+| `searchIn` | string | No | Search scope: all, title, content (default: all) |
+| `caseSensitive` | boolean | No | Case-sensitive search (default: false) |
+| `wholeWord` | boolean | No | Whole word match (default: false) |
+| `regex` | boolean | No | Use regex pattern (default: false) |
 
 ## Usage Examples
 
@@ -69,6 +74,37 @@ A unified tool for managing notes with the following parameters:
   "action": "delete",
   "level": "global",
   "id": "note-1234567890-abc123"
+}
+```
+
+### 6. Search Notes
+```json
+{
+  "action": "search",
+  "query": "important",
+  "searchIn": "all"
+}
+```
+
+### 7. Search with Options
+```json
+{
+  "action": "search",
+  "query": "TODO",
+  "level": "workspace",
+  "searchIn": "content",
+  "caseSensitive": true,
+  "wholeWord": true
+}
+```
+
+### 8. Search with Regex
+```json
+{
+  "action": "search",
+  "query": "\\berror\\b|\\bwarning\\b",
+  "regex": true,
+  "searchIn": "content"
 }
 ```
 
@@ -148,13 +184,89 @@ Use `jumpto` to navigate to a specific location:
 }
 ```
 
+## Search Examples
+
+### Basic Search
+```json
+{
+  "action": "search",
+  "query": "hello"
+}
+```
+
+### Title-only Search
+```json
+{
+  "action": "search",
+  "query": "meeting",
+  "searchIn": "title"
+}
+```
+
+### Content-only Search
+```json
+{
+  "action": "search",
+  "query": "implementation",
+  "searchIn": "content"
+}
+```
+
+### Case-Sensitive Search
+```json
+{
+  "action": "search",
+  "query": "API",
+  "caseSensitive": true
+}
+```
+
+### Whole Word Search
+```json
+{
+  "action": "search",
+  "query": "test",
+  "wholeWord": true
+}
+```
+
+### Regex Search
+```json
+{
+  "action": "search",
+  "query": "note-\\d{4}",
+  "regex": true
+}
+```
+
 ## CLI Alternative
 
 You can also use the CLI script directly:
 ```bash
+# Create note
 node notes.js create --level global --title "My Note" --content "Content"
+
+# List notes
 node notes.js list --level workspace
+
+# Read note
 node notes.js read --level agent --id "note-123" --agent-name "my-agent"
+
+# Update note
 node notes.js update --level workspace --id "note-123" --content "New content"
+
+# Delete note
 node notes.js delete --level global --id "note-123"
+
+# Search notes
+node notes.js search --query "keyword"
+node notes.js search --query "keyword" --level workspace --search-in title
+node notes.js search --query "keyword" --case-sensitive true --whole-word true
+node notes.js search --query "pattern" --regex true
+
+# Parse jump syntax
+node notes.js parse-jumps --content "[@jumpto global,,note-123:10]"
+
+# Jump to location
+node notes.js jumpto --level global --id "note-123" --lineno 10 --column 5
 ```

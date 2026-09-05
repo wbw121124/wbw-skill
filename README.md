@@ -10,6 +10,8 @@
 - **Markdown 格式**: 笔记以 Markdown 文件存储，支持 YAML 元数据
 - **MCP 协议支持**: 可在 opencode/cloud/openclaw 中使用
 - **插件支持**: 可作为 opencode 插件使用
+- **搜索功能**: 支持按关键词搜索笔记标题和内容
+- **跳转语法**: 支持 `[@jumpto]` 语法在笔记间跳转
 
 ## 安装
 
@@ -56,6 +58,9 @@ MCP 服务器提供标准的工具接口，可在 opencode/cloud/openclaw 中使
 | `read_note` | 读取笔记 | level, id, agentName |
 | `update_note` | 更新笔记 | level, id, content, agentName |
 | `delete_note` | 删除笔记 | level, id, agentName |
+| `search_notes` | 搜索笔记 | query, level, agentName, caseSensitive, wholeWord, regex, searchIn |
+| `jumpto` | 跳转到指定位置 | level, id, agentName, lineno, column |
+| `parse_jumps` | 解析跳转语法 | content |
 
 #### 示例：创建笔记
 
@@ -81,6 +86,18 @@ MCP 服务器提供标准的工具接口，可在 opencode/cloud/openclaw 中使
 }
 ```
 
+#### 示例：搜索笔记
+
+```json
+{
+  "tool": "search_notes",
+  "arguments": {
+    "query": "重要",
+    "searchIn": "all"
+  }
+}
+```
+
 ### 方式 2：插件工具
 
 插件提供统一的 `notes` 工具，通过 action 参数执行不同操作。
@@ -93,6 +110,19 @@ MCP 服务器提供标准的工具接口，可在 opencode/cloud/openclaw 中使
     "level": "global",
     "title": "我的笔记",
     "content": "笔记内容"
+  }
+}
+```
+
+#### 示例：搜索笔记
+
+```json
+{
+  "tool": "notes",
+  "arguments": {
+    "action": "search",
+    "query": "关键词",
+    "searchIn": "all"
   }
 }
 ```
@@ -114,9 +144,23 @@ node notes.js update --level workspace --id "note-123" --content "新内容"
 
 # 删除笔记
 node notes.js delete --level global --id "note-123"
+
+# 搜索笔记
+node notes.js search --query "关键词"
+node notes.js search --query "关键词" --level workspace --search-in title
+node notes.js search --query "关键词" --case-sensitive true --whole-word true
+node notes.js search --query "模式" --regex true
+
+# 跳转到指定位置
+node notes.js jumpto --level global --id "note-123" --lineno 10 --column 5
+
+# 解析跳转语法
+node notes.js parse-jumps --content "[@jumpto global,,note-123:10]"
 ```
 
 ## 参数说明
+
+### 基本参数
 
 | 参数 | 说明 | 可选值 | 默认值 |
 |------|------|--------|--------|
@@ -125,6 +169,16 @@ node notes.js delete --level global --id "note-123"
 | `content` | 笔记内容 | 任意字符串（支持 Markdown） | - |
 | `id` | 笔记 ID | 自动生成的 ID | - |
 | `agentName` | 代理名称 | 任意字符串 | - |
+
+### 搜索参数
+
+| 参数 | 说明 | 可选值 | 默认值 |
+|------|------|--------|--------|
+| `query` | 搜索关键词 | 任意字符串 | - |
+| `searchIn` | 搜索范围 | all, title, content | all |
+| `caseSensitive` | 区分大小写 | true, false | false |
+| `wholeWord` | 全词匹配 | true, false | false |
+| `regex` | 正则表达式 | true, false | false |
 
 ## 存储位置
 
@@ -155,6 +209,32 @@ level: "global"
 - `代码`
 - 列表
 - 等等
+```
+
+## 跳转语法
+
+支持自定义跳转语法在笔记间链接：
+
+```
+[@jumpto level,agent,id:lineno:column]
+```
+
+| 部分 | 说明 | 必需 |
+|------|------|------|
+| `level` | 目标级别：global, workspace, agent | 是 |
+| `agent` | 代理名称（代理级别时） | 否 |
+| `id` | 目标笔记 ID | 是 |
+| `lineno` | 目标行号 | 否 |
+| `column` | 目标列号 | 否 |
+
+### 示例
+
+```markdown
+参考 [@jumpto global,,note-123] 的内容。
+
+跳转到第 10 行：[@jumpto workspace,,note-456:10]
+
+跳转到指定位置：[@jumpto agent,my-agent,note-789:15:5]
 ```
 
 ## 使用示例
@@ -195,6 +275,33 @@ level: "global"
     "level": "global",
     "title": "常用命令备忘",
     "content": "## Git 常用命令\n\n- `git commit -m 'message'` - 提交更改"
+  }
+}
+```
+
+### 场景 4：搜索笔记
+
+```json
+{
+  "tool": "notes",
+  "arguments": {
+    "action": "search",
+    "query": "API",
+    "searchIn": "title"
+  }
+}
+```
+
+### 场景 5：高级搜索
+
+```json
+{
+  "tool": "notes",
+  "arguments": {
+    "action": "search",
+    "query": "TODO|FIXME",
+    "regex": true,
+    "searchIn": "content"
   }
 }
 ```
