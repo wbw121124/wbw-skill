@@ -1046,6 +1046,109 @@ class NotesManager {
         };
     }
 
+    /**
+     * 获取笔记统计信息
+     */
+    getStats(level = null, agentName = null, includeTags = false) {
+        const stats = {
+            totalNotes: 0,
+            totalWords: 0,
+            totalCharacters: 0,
+            byLevel: {},
+            recentCreated: [],
+            recentUpdated: [],
+            storageSize: 0
+        };
+
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir, level: resultLevel, agent } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+                    
+                    stats.totalCharacters += noteContent.length;
+                    const words = noteContent.split(/\s+/).filter(w => w.length > 0);
+                    stats.totalWords += words.length;
+                    stats.totalNotes++;
+                    
+                    if (!stats.byLevel[resultLevel]) {
+                        stats.byLevel[resultLevel] = 0;
+                    }
+                    stats.byLevel[resultLevel]++;
+                    
+                    if (frontmatter.created) {
+                        stats.recentCreated.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            created: frontmatter.created,
+                            level: resultLevel,
+                            agentName: agent
+                        });
+                    }
+                    
+                    if (frontmatter.updated) {
+                        stats.recentUpdated.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            updated: frontmatter.updated,
+                            level: resultLevel,
+                            agentName: agent
+                        });
+                    }
+                    
+                    const fileStats = fs.statSync(filePath);
+                    stats.storageSize += fileStats.size;
+                }
+            }
+        }
+
+        stats.recentCreated.sort((a, b) => new Date(b.created) - new Date(a.created));
+        stats.recentUpdated.sort((a, b) => new Date(b.updated) - new Date(a.updated));
+        
+        stats.recentCreated = stats.recentCreated.slice(0, 10);
+        stats.recentUpdated = stats.recentUpdated.slice(0, 10);
+
+        if (includeTags) {
+            stats.tags = this.listTags(level, agentName);
+        }
+
+        return stats;
+    }
+
     listTags(level = null, agentName = null) {
         const tagCount = {};
         const levels = level ? [level] : ['global', 'workspace', 'agent'];
@@ -1123,7 +1226,7 @@ export default async ({ client, project, directory, $ }) => {
                     properties: {
                         action: {
                             type: "string",
-                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template", "batch_delete", "batch_move", "batch_add_tags", "batch_remove_tags", "export", "import", "list_history", "read_history", "rollback_history"],
+                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template", "batch_delete", "batch_move", "batch_add_tags", "batch_remove_tags", "export", "import", "list_history", "read_history", "rollback_history", "stats"],
                             description: "The action to perform"
                         },
                         level: {
@@ -1252,12 +1355,16 @@ export default async ({ client, project, directory, $ }) => {
                         version: {
                             type: "integer",
                             description: "Version number (for read_history and rollback_history actions)"
+                        },
+                        includeTags: {
+                            type: "boolean",
+                            description: "Include tag statistics (for stats action, default: false)"
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order, ids, toLevel, toAgentName, addTags, removeTags, outputPath, filePath, format, version } = args;
+                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order, ids, toLevel, toAgentName, addTags, removeTags, outputPath, filePath, format, version, includeTags } = args;
 
                     try {
                         switch (action) {
@@ -1434,8 +1541,11 @@ export default async ({ client, project, directory, $ }) => {
                                 }
                                 return manager.rollbackHistory(level || 'workspace', id, version, agentName);
 
+                            case 'stats':
+                                return manager.getStats(level, agentName, includeTags);
+
                             default:
-                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, import, list_history, read_history, or rollback_history.` };
+                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, import, list_history, read_history, rollback_history, or stats.` };
                         }
                     } catch (error) {
                         return { error: error.message };

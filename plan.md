@@ -237,6 +237,8 @@ node notes.js stats --level workspace
 node notes.js stats --tags
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ## Phase 3 - 代码质量

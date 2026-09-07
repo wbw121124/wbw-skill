@@ -16,7 +16,7 @@ A unified tool for managing notes with the following parameters:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, import, list_history, read_history, rollback_history |
+| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, import, list_history, read_history, rollback_history, stats |
 | `level` | string | No | Storage level: global, workspace, agent (default: workspace) |
 | `title` | string | For create | Note title |
 | `content` | string | For create/update | Note content |
@@ -38,6 +38,7 @@ A unified tool for managing notes with the following parameters:
 | `filePath` | string | For import | File path to import (.md, .json, .zip) |
 | `format` | string | No | Export format: md, json (default: md) |
 | `version` | integer | For history | Version number for read_history/rollback_history |
+| `includeTags` | boolean | For stats | Include tag statistics (default: false) |
 | `searchIn` | string | No | Search scope: all, title, content (default: all) |
 | `caseSensitive` | boolean | No | Case-sensitive search (default: false) |
 | `wholeWord` | boolean | No | Whole word match (default: false) |
@@ -477,6 +478,32 @@ Use `jumpto` to navigate to a specific location:
   "level": "workspace",
   "id": "note-123",
   "version": 1693920000000
+}
+```
+
+## Statistics Examples
+
+### Get Global Statistics
+```json
+{
+  "action": "stats"
+}
+```
+
+### Get Workspace Statistics
+```json
+{
+  "action": "stats",
+  "level": "workspace"
+}
+```
+
+### Get Statistics with Tag Info
+```json
+{
+  "action": "stats",
+  "level": "workspace",
+  "includeTags": true
 }
 ```
 

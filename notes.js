@@ -1275,6 +1275,124 @@ class NotesManager {
     }
 
     /**
+     * 获取笔记统计信息
+     * @param {string|null} level - 存储级别（可选）
+     * @param {string|null} agentName - 代理名称（可选）
+     * @param {boolean} includeTags - 是否包含标签统计（默认 false）
+     * @returns {Object} 统计信息
+     */
+    getStats(level = null, agentName = null, includeTags = false) {
+        const stats = {
+            totalNotes: 0,
+            totalWords: 0,
+            totalCharacters: 0,
+            byLevel: {},
+            recentCreated: [],
+            recentUpdated: [],
+            storageSize: 0
+        };
+
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir, level: resultLevel, agent } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+                    
+                    // 统计总字符数
+                    stats.totalCharacters += noteContent.length;
+                    
+                    // 统计总词数（按空格分词）
+                    const words = noteContent.split(/\s+/).filter(w => w.length > 0);
+                    stats.totalWords += words.length;
+                    
+                    stats.totalNotes++;
+                    
+                    // 按级别统计
+                    if (!stats.byLevel[resultLevel]) {
+                        stats.byLevel[resultLevel] = 0;
+                    }
+                    stats.byLevel[resultLevel]++;
+                    
+                    // 收集最近创建的笔记
+                    if (frontmatter.created) {
+                        stats.recentCreated.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            created: frontmatter.created,
+                            level: resultLevel,
+                            agentName: agent
+                        });
+                    }
+                    
+                    // 收集最近更新的笔记
+                    if (frontmatter.updated) {
+                        stats.recentUpdated.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            updated: frontmatter.updated,
+                            level: resultLevel,
+                            agentName: agent
+                        });
+                    }
+                    
+                    // 计算文件大小
+                    const fileStats = fs.statSync(filePath);
+                    stats.storageSize += fileStats.size;
+                }
+            }
+        }
+
+        // 排序最近创建和更新的笔记
+        stats.recentCreated.sort((a, b) => new Date(b.created) - new Date(a.created));
+        stats.recentUpdated.sort((a, b) => new Date(b.updated) - new Date(a.updated));
+        
+        // 只保留最近 10 条
+        stats.recentCreated = stats.recentCreated.slice(0, 10);
+        stats.recentUpdated = stats.recentUpdated.slice(0, 10);
+
+        // 包含标签统计
+        if (includeTags) {
+            stats.tags = this.listTags(level, agentName);
+        }
+
+        return stats;
+    }
+
+    /**
      * 获取所有标签列表
      * @param {string|null} level - 存储级别（可选）
      * @param {string|null} agentName - 代理名称（可选）
@@ -1966,6 +2084,16 @@ function main() {
                 console.log(JSON.stringify(rollbackResult, null, 2));
                 break;
                 
+            case 'stats':
+                // 显示笔记统计信息
+                const statsResult = manager.getStats(
+                    args.level || null,
+                    args['agent-name'],
+                    args.tags === 'true'
+                );
+                console.log(JSON.stringify(statsResult, null, 2));
+                break;
+                
             default:
                 // 无效命令，显示使用帮助
                 console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, search, templates, or template');
@@ -1991,6 +2119,7 @@ function main() {
                 console.error('  import --file <file-path> --level <level> [--agent-name "<agent-name>"]');
                 console.error('  history --level <level> --id "<note-id>" [--version <version>] [--agent-name "<agent-name>"]');
                 console.error('  rollback --level <level> --id "<note-id>" --version <version> [--agent-name "<agent-name>"]');
+                console.error('  stats [--level <global|workspace|agent>] [--tags true] [--agent-name "<agent-name>"]');
                 console.error('');
                 console.error('Available templates: meeting, todo, daily, idea, bug, feature');
                 process.exit(1);
