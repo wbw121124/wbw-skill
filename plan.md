@@ -265,6 +265,8 @@ node notes.js stats --tags
 - 添加 TypeScript 依赖
 - 配置构建脚本
 
+**状态：** ✅ 已完成（基础骨架和类型定义）
+
 ---
 
 ### 3.2 单元测试
