@@ -15,6 +15,5 @@ body,
 
 pre, code, .tsd-code, .highlight-code {
   font-family: "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace !important;
-  font-feature-settings: "liga" 1, "calt" 1;
-  font-variant-ligatures: common-ligatures;
+  font-feature-settings: "cv02", "zero", "cv01", "cv06", "ss01", "ss05", "ss03", "cv30", "ss08";
 }
