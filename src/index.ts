@@ -7,4 +7,6 @@
 export * from './types';
 export { NotesManager } from './core/notes-manager';
 export { JumpParser } from './core/jump-parser';
+export { SecurityUtils } from './core/security';
+export { IndexManager } from './core/index-manager';
 export { NotesPlugin } from './plugin/index';
