@@ -398,7 +398,8 @@ class NotesManager {
         };
     }
 
-    listNotes(level, agentName = null) {
+    listNotes(level, agentName = null, options = {}) {
+        const { sort = 'created', order = 'desc' } = options;
         const dir = this.getDir(level, agentName);
         
         if (!fs.existsSync(dir)) {
@@ -424,7 +425,26 @@ class NotesManager {
             });
         }
         
-        notes.sort((a, b) => new Date(b.created) - new Date(a.created));
+        // 根据指定字段排序
+        notes.sort((a, b) => {
+            let comparison = 0;
+            switch (sort) {
+                case 'updated':
+                    comparison = new Date(a.updated || a.created) - new Date(b.updated || b.created);
+                    break;
+                case 'title':
+                    comparison = (a.title || '').localeCompare(b.title || '');
+                    break;
+                case 'id':
+                    comparison = (a.id || '').localeCompare(b.id || '');
+                    break;
+                case 'created':
+                default:
+                    comparison = new Date(a.created) - new Date(b.created);
+                    break;
+            }
+            return order === 'desc' ? -comparison : comparison;
+        });
         
         return { notes, count: notes.length };
     }
@@ -745,12 +765,22 @@ export default async ({ client, project, directory, $ }) => {
                             type: "string",
                             enum: ["meeting", "todo", "daily", "idea", "bug", "feature"],
                             description: "Template name (for get_template action)"
+                        },
+                        sort: {
+                            type: "string",
+                            enum: ["created", "updated", "title", "id"],
+                            description: "Sort field (for list action, default: created)"
+                        },
+                        order: {
+                            type: "string",
+                            enum: ["asc", "desc"],
+                            description: "Sort order (for list action, default: desc)"
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName } = args;
+                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order } = args;
 
                     try {
                         switch (action) {
@@ -761,7 +791,11 @@ export default async ({ client, project, directory, $ }) => {
                                 return manager.createNote(level || 'workspace', title, content || '', agentName, tags || [], template);
 
                             case 'list':
-                                return manager.listNotes(level || 'workspace', agentName);
+                                const listOptions = {
+                                    sort: sort || 'created',
+                                    order: order || 'desc'
+                                };
+                                return manager.listNotes(level || 'workspace', agentName, listOptions);
 
                             case 'read':
                                 if (!id) {

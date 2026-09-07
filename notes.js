@@ -449,9 +449,13 @@ class NotesManager {
      * 列出指定级别的所有笔记
      * @param {string} level - 存储级别
      * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @param {Object} options - 排序选项
+     * @param {string} options.sort - 排序字段：created, updated, title, id（默认 created）
+     * @param {string} options.order - 排序顺序：asc, desc（默认 desc）
      * @returns {Object} 包含笔记列表和数量的对象
      */
-    listNotes(level, agentName = null) {
+    listNotes(level, agentName = null, options = {}) {
+        const { sort = 'created', order = 'desc' } = options;
         const dir = this.getDir(level, agentName);
         
         // 如果目录不存在，返回空列表
@@ -480,8 +484,26 @@ class NotesManager {
             });
         }
         
-        // 按创建时间降序排序（最新的在前）
-        notes.sort((a, b) => new Date(b.created) - new Date(a.created));
+        // 根据指定字段排序
+        notes.sort((a, b) => {
+            let comparison = 0;
+            switch (sort) {
+                case 'updated':
+                    comparison = new Date(a.updated || a.created) - new Date(b.updated || b.created);
+                    break;
+                case 'title':
+                    comparison = (a.title || '').localeCompare(b.title || '');
+                    break;
+                case 'id':
+                    comparison = (a.id || '').localeCompare(b.id || '');
+                    break;
+                case 'created':
+                default:
+                    comparison = new Date(a.created) - new Date(b.created);
+                    break;
+            }
+            return order === 'desc' ? -comparison : comparison;
+        });
         
         return { notes, count: notes.length };
     }
@@ -991,9 +1013,14 @@ function main() {
                         tag: args.tag
                     };
                 } else {
+                    const listOptions = {
+                        sort: args.sort || 'created',
+                        order: args.order || 'desc'
+                    };
                     listResult = manager.listNotes(
                         args.level || 'workspace',
-                        args['agent-name']
+                        args['agent-name'],
+                        listOptions
                     );
                 }
                 
@@ -1180,7 +1207,7 @@ function main() {
                 console.error('Usage: node notes.js <command> [options]');
                 console.error('Commands:');
                 console.error('  create --level <global|workspace|agent> --title "<title>" [--content "<content>"] [--tags "tag1,tag2"] [--template <template-name>] [--agent-name "<agent-name>"]');
-                console.error('  list --level <global|workspace|agent> [--tag "<tag>"] [--agent-name "<agent-name>"]');
+                console.error('  list --level <global|workspace|agent> [--tag "<tag>"] [--sort <created|updated|title|id>] [--order <asc|desc>] [--agent-name "<agent-name>"]');
                 console.error('  read --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
                 console.error('  update --level <global|workspace|agent> --id "<note-id>" --content "<content>" [--tags "tag1,tag2"] [--agent-name "<agent-name>"]');
                 console.error('  delete --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');

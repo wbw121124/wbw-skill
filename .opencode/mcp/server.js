@@ -407,7 +407,8 @@ class NotesManager {
         };
     }
 
-    listNotes(level, agentName = null) {
+    listNotes(level, agentName = null, options = {}) {
+        const { sort = 'created', order = 'desc' } = options;
         const dir = this.getDir(level, agentName);
         
         if (!fs.existsSync(dir)) {
@@ -433,7 +434,26 @@ class NotesManager {
             });
         }
         
-        notes.sort((a, b) => new Date(b.created) - new Date(a.created));
+        // 根据指定字段排序
+        notes.sort((a, b) => {
+            let comparison = 0;
+            switch (sort) {
+                case 'updated':
+                    comparison = new Date(a.updated || a.created) - new Date(b.updated || b.created);
+                    break;
+                case 'title':
+                    comparison = (a.title || '').localeCompare(b.title || '');
+                    break;
+                case 'id':
+                    comparison = (a.id || '').localeCompare(b.id || '');
+                    break;
+                case 'created':
+                default:
+                    comparison = new Date(a.created) - new Date(b.created);
+                    break;
+            }
+            return order === 'desc' ? -comparison : comparison;
+        });
         
         return notes;
     }
@@ -864,6 +884,16 @@ class MCPServer {
                         agentName: {
                             type: "string",
                             description: "Agent name (required when level is 'agent')"
+                        },
+                        sort: {
+                            type: "string",
+                            enum: ["created", "updated", "title", "id"],
+                            description: "Sort field (default: created)"
+                        },
+                        order: {
+                            type: "string",
+                            enum: ["asc", "desc"],
+                            description: "Sort order (default: desc)"
                         }
                     },
                     required: ["level"]
@@ -1178,7 +1208,11 @@ class MCPServer {
                     break;
 
                 case 'list_notes':
-                    result = this.manager.listNotes(args.level, args.agentName);
+                    const listOptions = {
+                        sort: args.sort || 'created',
+                        order: args.order || 'desc'
+                    };
+                    result = this.manager.listNotes(args.level, args.agentName, listOptions);
                     break;
 
                 case 'read_note':

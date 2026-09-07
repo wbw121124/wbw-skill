@@ -27,6 +27,8 @@ A unified tool for managing notes with the following parameters:
 | `query` | string | For search | Search keyword |
 | `tag` | string | For list_by_tag | Tag to filter by |
 | `templateName` | string | For get_template | Template name to retrieve |
+| `sort` | string | No | Sort field: created, updated, title, id (default: created) |
+| `order` | string | No | Sort order: asc, desc (default: desc) |
 | `searchIn` | string | No | Search scope: all, title, content (default: all) |
 | `caseSensitive` | boolean | No | Case-sensitive search (default: false) |
 | `wholeWord` | boolean | No | Whole word match (default: false) |
@@ -53,7 +55,27 @@ A unified tool for managing notes with the following parameters:
 }
 ```
 
-### 3. Read an Agent-Specific Note
+### 3. List Notes Sorted by Updated Time
+```json
+{
+  "action": "list",
+  "level": "workspace",
+  "sort": "updated",
+  "order": "desc"
+}
+```
+
+### 4. List Notes Sorted by Title (Ascending)
+```json
+{
+  "action": "list",
+  "level": "workspace",
+  "sort": "title",
+  "order": "asc"
+}
+```
+
+### 5. Read an Agent-Specific Note
 ```json
 {
   "action": "read",

@@ -103,6 +103,8 @@ node notes.js list --level workspace --sort updated --order desc
 node notes.js list --level workspace --sort title --order asc
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ### 1.4 批量操作
