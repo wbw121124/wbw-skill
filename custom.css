@@ -1,14 +1,18 @@
-/* Fira Code 字体 */
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap');
+/* TypeDoc 自定义样式 - 使用博客字体 */
 
 :root {
-  --code-font: 'Fira Code', monospace;
+  --font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+}
+
+body,
+.tsd-page-toolbar,
+.tsd-page-panel,
+.tsd-panel,
+.tsd-page-header,
+.tsd-navigation {
+  font-family: var(--font-family) !important;
 }
 
 pre, code, .tsd-code, .highlight-code {
-  font-family: var(--code-font) !important;
-}
-
-.tsd-navigation a, .tsd-kind-icon {
-  font-family: var(--code-font);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace !important;
 }
