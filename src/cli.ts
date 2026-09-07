@@ -57,7 +57,8 @@ function main(): void {
                     args.content || '',
                     args['agent-name'],
                     createTags,
-                    args.template
+                    args.template,
+                    args.pinned === 'true'
                 );
                 
                 console.log(JSON.stringify(createResult, null, 2));
@@ -255,6 +256,22 @@ function main(): void {
                     console.error(`Error: ${(error as Error).message}`);
                     process.exit(1);
                 }
+                break;
+            }
+                
+            case 'pin': {
+                if (!args.id) {
+                    console.error('Error: --id is required for pin command');
+                    process.exit(1);
+                }
+                
+                const pinResult = manager.togglePin(
+                    (args.level || 'workspace') as StorageLevel,
+                    args.id,
+                    args['agent-name']
+                );
+                
+                console.log(JSON.stringify(pinResult, null, 2));
                 break;
             }
                 

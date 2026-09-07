@@ -334,8 +334,9 @@ export class NotesManager {
         content: string,
         agentName?: string,
         tags?: string[],
-        template?: string
-    ): { success: boolean; id: string; title: string; level: StorageLevel; agentName?: string; tags: string[]; path: string } {
+        template?: string,
+        pinned?: boolean
+    ): { success: boolean; id: string; title: string; level: StorageLevel; agentName?: string; tags: string[]; pinned: boolean; path: string } {
         if (template) {
             const templateData = this.getTemplate(template);
             content = content ? `${content}\n\n---\n\n${templateData.content}` : templateData.content;
@@ -358,6 +359,7 @@ export class NotesManager {
             `level: "${level}"`,
             agentName ? `agent: "${agentName}"` : null,
             `tags: ${tagsStr}`,
+            `pinned: ${pinned ? 'true' : 'false'}`,
             '---'
         ].filter(Boolean).join('\n');
         
@@ -374,6 +376,7 @@ export class NotesManager {
             level,
             agentName,
             tags: tags || [],
+            pinned: pinned || false,
             path: filePath
         };
     }
@@ -408,11 +411,16 @@ export class NotesManager {
                 updated: frontmatter.updated,
                 level: (frontmatter.level || level) as StorageLevel,
                 agentName: frontmatter.agent || agentName,
-                tags: Array.isArray(frontmatter.tags) ? frontmatter.tags : []
+                tags: Array.isArray(frontmatter.tags) ? frontmatter.tags : [],
+                pinned: frontmatter.pinned === 'true' || frontmatter.pinned === true
             });
         }
         
         notes.sort((a, b) => {
+            // 置顶笔记优先
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            
             let comparison = 0;
             switch (sort) {
                 case 'updated':
@@ -548,6 +556,47 @@ export class NotesManager {
             level,
             agentName,
             deleted: true
+        };
+    }
+
+    /**
+     * 切换笔记置顶状态
+     */
+    togglePin(level: StorageLevel, id: string, agentName?: string): { success: boolean; id: string; pinned: boolean } {
+        const dir = this.getDir(level, agentName);
+        const filePath = path.join(dir, `${id}.md`);
+        
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`Note not found: ${id}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        const currentPinned = frontmatter.pinned === 'true' || frontmatter.pinned === true;
+        const newPinned = !currentPinned;
+        
+        // 更新 frontmatter
+        const updatedFrontmatter = [
+            '---',
+            `id: "${frontmatter.id || id}"`,
+            `title: "${frontmatter.title || 'Untitled'}"`,
+            `created: "${frontmatter.created}"`,
+            `updated: "${new Date().toISOString()}"`,
+            `level: "${frontmatter.level || level}"`,
+            frontmatter.agent ? `agent: "${frontmatter.agent}"` : null,
+            `tags: ${Array.isArray(frontmatter.tags) ? `[${frontmatter.tags.join(', ')}]` : '[]'}`,
+            `pinned: ${newPinned ? 'true' : 'false'}`,
+            '---'
+        ].filter(Boolean).join('\n');
+        
+        const updatedContent = `${updatedFrontmatter}\n\n${noteContent}`;
+        fs.writeFileSync(filePath, updatedContent, 'utf8');
+        
+        return {
+            success: true,
+            id,
+            pinned: newPinned
         };
     }
 

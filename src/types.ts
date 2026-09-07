@@ -9,6 +9,7 @@ export interface NoteMetadata {
     level: StorageLevel;
     agentName?: string;
     tags: string[];
+    pinned?: boolean;
 }
 
 /**
@@ -201,4 +202,5 @@ export interface CLIArgs {
     'whole-word'?: string;
     regex?: string;
     'search-in'?: string;
+    pinned?: string;
 }
