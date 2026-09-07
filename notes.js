@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const archiver = require('archiver');
 
 /**
  * 跳转语法解析器
@@ -84,6 +85,229 @@ class NotesManager {
         
         // 代理笔记存储路径：当前项目/.wbw-skill/notes/agent/<agent-name>/
         this.agentDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'agent');
+        
+        // 版本历史存储路径：当前项目/.wbw-skill/history/
+        this.historyDir = path.join(process.cwd(), '.wbw-skill', 'history');
+
+        // 预定义笔记模板
+        this.templates = {
+            meeting: {
+                name: 'meeting',
+                description: '会议记录模板',
+                content: `# 会议记录
+
+## 会议信息
+- **日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **时间：** 
+- **地点：** 
+- **参与者：** 
+
+## 议题
+1. 
+
+## 讨论内容
+
+
+## 决议事项
+- [ ] 
+
+## 下一步行动
+- [ ] 
+
+## 备注
+`
+            },
+            todo: {
+                name: 'todo',
+                description: '待办事项模板',
+                content: `# 待办事项
+
+## 紧急且重要
+- [ ] 
+
+## 重要但不紧急
+- [ ] 
+
+## 紧急但不重要
+- [ ] 
+
+## 不紧急不重要
+- [ ] 
+
+## 已完成
+- [x] 
+
+## 备注
+`
+            },
+            daily: {
+                name: 'daily',
+                description: '日记/日志模板',
+                content: `# ${new Date().toLocaleDateString('zh-CN')} 工作日志
+
+## 今日目标
+1. 
+
+## 工作内容
+### 上午
+- 
+
+### 下午
+- 
+
+## 遇到的问题
+
+
+## 解决方案
+
+
+## 明日计划
+1. 
+
+## 备注
+`
+            },
+            idea: {
+                name: 'idea',
+                description: '想法/灵感模板',
+                content: `# 想法记录
+
+## 标题
+**灵感来源：** 
+
+## 核心想法
+
+
+## 详细描述
+
+
+## 可行性分析
+- **技术可行性：** 
+- **资源需求：** 
+- **预期收益：** 
+
+## 相关链接
+- 
+
+## 下一步
+- [ ] 
+`
+            },
+            bug: {
+                name: 'bug',
+                description: 'Bug 报告模板',
+                content: `# Bug 报告
+
+## 基本信息
+- **报告日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **报告人：** 
+- **优先级：** [高/中/低]
+
+## Bug 描述
+### 现象
+
+
+### 预期行为
+
+
+## 复现步骤
+1. 
+2. 
+3. 
+
+## 环境信息
+- **操作系统：** 
+- **浏览器/应用版本：** 
+- **其他环境：** 
+
+## 截图/日志
+
+
+## 临时解决方案
+
+
+## 根本原因分析
+
+
+## 修复建议
+
+
+## 状态
+- [ ] 待确认
+- [ ] 处理中
+- [ ] 已修复
+- [ ] 已验证
+`
+            },
+            feature: {
+                name: 'feature',
+                description: '功能需求模板',
+                content: `# 功能需求
+
+## 基本信息
+- **需求日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **提出者：** 
+- **优先级：** [高/中/低]
+
+## 需求背景
+
+
+## 功能描述
+
+
+## 用户故事
+作为 **[角色]**，我想要 **[功能]**，以便 **[价值]**。
+
+## 验收标准
+- [ ] 
+- [ ] 
+- [ ] 
+
+## 技术方案
+
+
+## 影响范围
+- **前端：** 
+- **后端：** 
+- **数据库：** 
+
+## 工作量评估
+- **预估工时：** 
+- **负责人：** 
+
+## 状态
+- [ ] 待评审
+- [ ] 已批准
+- [ ] 开发中
+- [ ] 已完成
+`
+            }
+        };
+    }
+
+    /**
+     * 获取所有可用模板列表
+     * @returns {Object} 包含模板列表和数量的对象
+     */
+    listTemplates() {
+        const templateList = Object.values(this.templates).map(t => ({
+            name: t.name,
+            description: t.description
+        }));
+        return { templates: templateList, count: templateList.length };
+    }
+
+    /**
+     * 获取指定模板的内容
+     * @param {string} templateName - 模板名称
+     * @returns {Object} 模板详情
+     */
+    getTemplate(templateName) {
+        const template = this.templates[templateName];
+        if (!template) {
+            throw new Error(`Template not found: ${templateName}. Available: ${Object.keys(this.templates).join(', ')}`);
+        }
+        return { ...template };
     }
 
     /**
@@ -173,9 +397,15 @@ class NotesManager {
      * @param {string} content - 笔记内容
      * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
      * @param {Array<string>|null} tags - 标签数组
+     * @param {string|null} template - 模板名称（可选）
      * @returns {Object} 创建结果，包含笔记 ID、标题、路径等信息
      */
-    createNote(level, title, content, agentName = null, tags = null) {
+    createNote(level, title, content, agentName = null, tags = null, template = null) {
+        // 如果指定了模板，使用模板内容
+        if (template) {
+            const templateData = this.getTemplate(template);
+            content = content ? `${content}\n\n---\n\n${templateData.content}` : templateData.content;
+        }
         // 获取存储目录并确保目录存在
         const dir = this.getDir(level, agentName);
         fs.mkdirSync(dir, { recursive: true });
@@ -223,9 +453,13 @@ class NotesManager {
      * 列出指定级别的所有笔记
      * @param {string} level - 存储级别
      * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @param {Object} options - 排序选项
+     * @param {string} options.sort - 排序字段：created, updated, title, id（默认 created）
+     * @param {string} options.order - 排序顺序：asc, desc（默认 desc）
      * @returns {Object} 包含笔记列表和数量的对象
      */
-    listNotes(level, agentName = null) {
+    listNotes(level, agentName = null, options = {}) {
+        const { sort = 'created', order = 'desc' } = options;
         const dir = this.getDir(level, agentName);
         
         // 如果目录不存在，返回空列表
@@ -254,8 +488,26 @@ class NotesManager {
             });
         }
         
-        // 按创建时间降序排序（最新的在前）
-        notes.sort((a, b) => new Date(b.created) - new Date(a.created));
+        // 根据指定字段排序
+        notes.sort((a, b) => {
+            let comparison = 0;
+            switch (sort) {
+                case 'updated':
+                    comparison = new Date(a.updated || a.created) - new Date(b.updated || b.created);
+                    break;
+                case 'title':
+                    comparison = (a.title || '').localeCompare(b.title || '');
+                    break;
+                case 'id':
+                    comparison = (a.id || '').localeCompare(b.id || '');
+                    break;
+                case 'created':
+                default:
+                    comparison = new Date(a.created) - new Date(b.created);
+                    break;
+            }
+            return order === 'desc' ? -comparison : comparison;
+        });
         
         return { notes, count: notes.length };
     }
@@ -460,6 +712,684 @@ class NotesManager {
         results.sort((a, b) => new Date(b.created) - new Date(a.created));
 
         return results;
+    }
+
+    /**
+     * 批量删除笔记
+     * @param {Array<string>} ids - 笔记 ID 数组
+     * @param {string} level - 存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 批量删除结果
+     */
+    batchDelete(ids, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const result = this.deleteNote(level, id, agentName);
+                results.push({ id, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            deleted: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量移动笔记到其他级别
+     * @param {Array<string>} ids - 笔记 ID 数组
+     * @param {string} fromLevel - 源存储级别
+     * @param {string} toLevel - 目标存储级别
+     * @param {string|null} fromAgentName - 源代理名称
+     * @param {string|null} toAgentName - 目标代理名称
+     * @returns {Object} 批量移动结果
+     */
+    batchMove(ids, fromLevel, toLevel, fromAgentName = null, toAgentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                // 读取源笔记
+                const note = this.readNote(fromLevel, id, fromAgentName, false);
+                
+                // 创建目标笔记
+                const createResult = this.createNote(
+                    toLevel,
+                    note.title,
+                    note.content,
+                    toAgentName,
+                    note.tags
+                );
+                
+                // 删除源笔记
+                this.deleteNote(fromLevel, id, fromAgentName);
+                
+                results.push({ 
+                    id, 
+                    newId: createResult.id,
+                    success: true 
+                });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            moved: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量添加标签到笔记
+     * @param {Array<string>} ids - 笔记 ID 数组
+     * @param {Array<string>} addTags - 要添加的标签数组
+     * @param {string} level - 存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 批量添加标签结果
+     */
+    batchAddTags(ids, addTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                // 读取现有笔记
+                const note = this.readNote(level, id, agentName, false);
+                
+                // 合并标签（去重）
+                const existingTags = note.tags || [];
+                const newTags = [...new Set([...existingTags, ...addTags])];
+                
+                // 更新笔记标签
+                const updateResult = this.updateNote(level, id, note.content, agentName, newTags);
+                
+                results.push({ 
+                    id, 
+                    tags: newTags,
+                    success: true 
+                });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量删除标签
+     * @param {Array<string>} ids - 笔记 ID 数组
+     * @param {Array<string>} removeTags - 要删除的标签数组
+     * @param {string} level - 存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 批量删除标签结果
+     */
+    batchRemoveTags(ids, removeTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                // 读取现有笔记
+                const note = this.readNote(level, id, agentName, false);
+                
+                // 过滤掉要删除的标签
+                const existingTags = note.tags || [];
+                const newTags = existingTags.filter(t => !removeTags.includes(t));
+                
+                // 更新笔记标签
+                const updateResult = this.updateNote(level, id, note.content, agentName, newTags);
+                
+                results.push({ 
+                    id, 
+                    tags: newTags,
+                    success: true 
+                });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 导出单个笔记为 Markdown 文件
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {string} outputPath - 输出路径
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 导出结果
+     */
+    exportNote(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        const dir = this.getDir(level, agentName);
+        const sourcePath = path.join(dir, `${id}.md`);
+        
+        // 确保输出目录存在
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.md`;
+        const destPath = path.join(outputPath, fileName);
+        
+        // 复制文件
+        fs.copyFileSync(sourcePath, destPath);
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            source: sourcePath,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 导出笔记为 JSON 格式
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {string} outputPath - 输出路径
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 导出结果
+     */
+    exportNoteAsJson(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        
+        // 确保输出目录存在
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.json`;
+        const destPath = path.join(outputPath, fileName);
+        
+        // 创建 JSON 数据
+        const jsonData = {
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            created: note.created,
+            updated: note.updated,
+            level: note.level,
+            agentName: note.agentName,
+            tags: note.tags,
+            exportedAt: new Date().toISOString()
+        };
+        
+        // 写入文件
+        fs.writeFileSync(destPath, JSON.stringify(jsonData, null, 2), 'utf8');
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 批量导出笔记为 ZIP 压缩包
+     * @param {string} level - 存储级别
+     * @param {string} outputPath - 输出文件路径
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Promise<Object>} 导出结果
+     */
+    async exportNotesAsZip(level, outputPath, agentName = null) {
+        const dir = this.getDir(level, agentName);
+        
+        if (!fs.existsSync(dir)) {
+            throw new Error(`No notes found for level: ${level}`);
+        }
+        
+        const files = fs.readdirSync(dir).filter(file => file.endsWith('.md'));
+        
+        if (files.length === 0) {
+            throw new Error(`No notes found for level: ${level}`);
+        }
+        
+        // 确保输出目录存在
+        const outputDir = path.dirname(outputPath);
+        fs.mkdirSync(outputDir, { recursive: true });
+        
+        return new Promise((resolve, reject) => {
+            const output = fs.createWriteStream(outputPath);
+            const archive = archiver('zip', { zlib: { level: 9 } });
+            
+            output.on('close', () => {
+                resolve({
+                    success: true,
+                    level,
+                    count: files.length,
+                    destination: outputPath,
+                    size: archive.pointer()
+                });
+            });
+            
+            archive.on('error', reject);
+            
+            archive.pipe(output);
+            
+            // 添加所有笔记文件
+            for (const file of files) {
+                const filePath = path.join(dir, file);
+                archive.file(filePath, { name: file });
+            }
+            
+            archive.finalize();
+        });
+    }
+
+    /**
+     * 导入笔记从 Markdown 文件
+     * @param {string} filePath - 文件路径
+     * @param {string} level - 目标存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 导入结果
+     */
+    importNoteFromMarkdown(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        // 使用文件中的元数据或生成新的
+        const title = frontmatter.title || path.basename(filePath, '.md');
+        const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+        
+        // 创建笔记
+        const result = this.createNote(level, title, noteContent, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 导入笔记从 JSON 文件
+     * @param {string} filePath - 文件路径
+     * @param {string} level - 目标存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 导入结果
+     */
+    importNoteFromJson(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const jsonData = JSON.parse(content);
+        
+        // 使用 JSON 中的数据创建笔记
+        const title = jsonData.title || path.basename(filePath, '.json');
+        const tags = Array.isArray(jsonData.tags) ? jsonData.tags : [];
+        
+        // 创建笔记
+        const result = this.createNote(level, title, jsonData.content, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 批量导入笔记从 ZIP 压缩包
+     * @param {string} zipPath - ZIP 文件路径
+     * @param {string} level - 目标存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Promise<Object>} 导入结果
+     */
+    async importNotesFromZip(zipPath, level, agentName = null) {
+        const AdmZip = require('adm-zip');
+        
+        if (!fs.existsSync(zipPath)) {
+            throw new Error(`ZIP file not found: ${zipPath}`);
+        }
+        
+        const zip = new AdmZip(zipPath);
+        const entries = zip.getEntries();
+        
+        const results = [];
+        const errors = [];
+        
+        for (const entry of entries) {
+            if (entry.entryName.endsWith('.md')) {
+                try {
+                    const content = entry.getData().toString('utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+                    
+                    const title = frontmatter.title || entry.entryName.replace('.md', '');
+                    const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+                    
+                    const result = this.createNote(level, title, noteContent, agentName, tags);
+                    results.push({ file: entry.entryName, ...result });
+                } catch (error) {
+                    errors.push({ file: entry.entryName, error: error.message });
+                }
+            }
+        }
+        
+        return {
+            success: errors.length === 0,
+            imported: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 保存笔记历史版本
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {string} content - 笔记内容
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 保存结果
+     */
+    saveHistory(level, id, content, agentName = null) {
+        // 确定历史目录
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        fs.mkdirSync(historyLevelDir, { recursive: true });
+        
+        // 读取现有笔记获取标题
+        const note = this.readNote(level, id, agentName, false);
+        
+        // 创建版本文件名
+        const version = Date.now();
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        // 构建版本内容
+        const frontmatter = [
+            '---',
+            `id: "${id}"`,
+            `title: "${note.title}"`,
+            `version: "${version}"`,
+            `savedAt: "${new Date().toISOString()}"`,
+            `level: "${level}"`,
+            agentName ? `agent: "${agentName}"` : null,
+            '---'
+        ].filter(Boolean).join('\n');
+        
+        const versionContent = `${frontmatter}\n\n${content}`;
+        fs.writeFileSync(versionPath, versionContent, 'utf8');
+        
+        // 清理旧版本（保留最近 10 个版本）
+        this.cleanupHistory(historyLevelDir, id, 10);
+        
+        return {
+            success: true,
+            id,
+            version,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 清理旧的历史版本
+     * @param {string} historyDir - 历史目录
+     * @param {string} noteId - 笔记 ID
+     * @param {number} keepCount - 保留的版本数量
+     */
+    cleanupHistory(historyDir, noteId, keepCount = 10) {
+        if (!fs.existsSync(historyDir)) {
+            return;
+        }
+        
+        // 获取该笔记的所有版本文件
+        const files = fs.readdirSync(historyDir)
+            .filter(f => f.startsWith(`${noteId}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        // 删除超出保留数量的旧版本
+        if (files.length > keepCount) {
+            for (let i = keepCount; i < files.length; i++) {
+                fs.unlinkSync(path.join(historyDir, files[i]));
+            }
+        }
+    }
+
+    /**
+     * 查看笔记历史版本列表
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 历史版本列表
+     */
+    listHistory(level, id, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        
+        if (!fs.existsSync(historyLevelDir)) {
+            return { versions: [], count: 0 };
+        }
+        
+        // 获取该笔记的所有版本文件
+        const files = fs.readdirSync(historyLevelDir)
+            .filter(f => f.startsWith(`${id}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        const versions = [];
+        for (const file of files) {
+            const filePath = path.join(historyLevelDir, file);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const { frontmatter } = this.parseNote(content);
+            
+            versions.push({
+                version: parseInt(frontmatter.version || file.replace(`${id}_v`, '').replace('.md', '')),
+                savedAt: frontmatter.savedAt,
+                path: filePath
+            });
+        }
+        
+        return { versions, count: versions.length };
+    }
+
+    /**
+     * 查看特定历史版本内容
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {number} version - 版本号
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 版本内容
+     */
+    readHistory(level, id, version, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        if (!fs.existsSync(versionPath)) {
+            throw new Error(`Version not found: ${id} v${version}`);
+        }
+        
+        const content = fs.readFileSync(versionPath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        return {
+            id: frontmatter.id || id,
+            title: frontmatter.title,
+            version: parseInt(frontmatter.version || version),
+            savedAt: frontmatter.savedAt,
+            content: noteContent,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 回滚到指定历史版本
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {number} version - 版本号
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 回滚结果
+     */
+    rollbackHistory(level, id, version, agentName = null) {
+        // 先读取历史版本内容
+        const historyVersion = this.readHistory(level, id, version, agentName);
+        
+        // 保存当前版本到历史（防止误操作）
+        const currentNote = this.readNote(level, id, agentName, false);
+        this.saveHistory(level, id, currentNote.content, agentName);
+        
+        // 更新笔记为历史版本内容
+        const updateResult = this.updateNote(level, id, historyVersion.content, agentName);
+        
+        return {
+            success: true,
+            id,
+            rolledBackTo: version,
+            ...updateResult
+        };
+    }
+
+    /**
+     * 获取笔记统计信息
+     * @param {string|null} level - 存储级别（可选）
+     * @param {string|null} agentName - 代理名称（可选）
+     * @param {boolean} includeTags - 是否包含标签统计（默认 false）
+     * @returns {Object} 统计信息
+     */
+    getStats(level = null, agentName = null, includeTags = false) {
+        const stats = {
+            totalNotes: 0,
+            totalWords: 0,
+            totalCharacters: 0,
+            byLevel: {},
+            recentCreated: [],
+            recentUpdated: [],
+            storageSize: 0
+        };
+
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir, level: resultLevel, agent } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+                    
+                    // 统计总字符数
+                    stats.totalCharacters += noteContent.length;
+                    
+                    // 统计总词数（按空格分词）
+                    const words = noteContent.split(/\s+/).filter(w => w.length > 0);
+                    stats.totalWords += words.length;
+                    
+                    stats.totalNotes++;
+                    
+                    // 按级别统计
+                    if (!stats.byLevel[resultLevel]) {
+                        stats.byLevel[resultLevel] = 0;
+                    }
+                    stats.byLevel[resultLevel]++;
+                    
+                    // 收集最近创建的笔记
+                    if (frontmatter.created) {
+                        stats.recentCreated.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            created: frontmatter.created,
+                            level: resultLevel,
+                            agentName: agent
+                        });
+                    }
+                    
+                    // 收集最近更新的笔记
+                    if (frontmatter.updated) {
+                        stats.recentUpdated.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            updated: frontmatter.updated,
+                            level: resultLevel,
+                            agentName: agent
+                        });
+                    }
+                    
+                    // 计算文件大小
+                    const fileStats = fs.statSync(filePath);
+                    stats.storageSize += fileStats.size;
+                }
+            }
+        }
+
+        // 排序最近创建和更新的笔记
+        stats.recentCreated.sort((a, b) => new Date(b.created) - new Date(a.created));
+        stats.recentUpdated.sort((a, b) => new Date(b.updated) - new Date(a.updated));
+        
+        // 只保留最近 10 条
+        stats.recentCreated = stats.recentCreated.slice(0, 10);
+        stats.recentUpdated = stats.recentUpdated.slice(0, 10);
+
+        // 包含标签统计
+        if (includeTags) {
+            stats.tags = this.listTags(level, agentName);
+        }
+
+        return stats;
     }
 
     /**
@@ -735,8 +1665,8 @@ function main() {
         switch (args.command) {
             case 'create':
                 // 创建笔记命令
-                if (!args.title || !args.content) {
-                    console.error('Error: --title and --content are required for create command');
+                if (!args.title) {
+                    console.error('Error: --title is required for create command');
                     process.exit(1);
                 }
                 
@@ -746,9 +1676,10 @@ function main() {
                 const createResult = manager.createNote(
                     args.level || 'workspace',
                     args.title,
-                    args.content,
+                    args.content || '',
                     args['agent-name'],
-                    createTags
+                    createTags,
+                    args.template
                 );
                 
                 console.log(JSON.stringify(createResult, null, 2));
@@ -764,9 +1695,14 @@ function main() {
                         tag: args.tag
                     };
                 } else {
+                    const listOptions = {
+                        sort: args.sort || 'created',
+                        order: args.order || 'desc'
+                    };
                     listResult = manager.listNotes(
                         args.level || 'workspace',
-                        args['agent-name']
+                        args['agent-name'],
+                        listOptions
                     );
                 }
                 
@@ -925,13 +1861,246 @@ function main() {
                 }, null, 2));
                 break;
                 
+            case 'templates':
+                // 列出所有可用模板
+                const templatesResult = manager.listTemplates();
+                console.log(JSON.stringify(templatesResult, null, 2));
+                break;
+                
+            case 'template':
+                // 获取指定模板内容
+                if (!args.name) {
+                    console.error('Error: --name is required for template command');
+                    process.exit(1);
+                }
+                
+                try {
+                    const templateResult = manager.getTemplate(args.name);
+                    console.log(JSON.stringify(templateResult, null, 2));
+                } catch (error) {
+                    console.error(`Error: ${error.message}`);
+                    process.exit(1);
+                }
+                break;
+                
+            case 'batch-delete':
+                // 批量删除笔记
+                if (!args.ids) {
+                    console.error('Error: --ids is required for batch-delete command');
+                    process.exit(1);
+                }
+                
+                const deleteIds = args.ids.split(',').map(id => id.trim());
+                const batchDeleteResult = manager.batchDelete(
+                    deleteIds,
+                    args.level || 'workspace',
+                    args['agent-name']
+                );
+                
+                console.log(JSON.stringify(batchDeleteResult, null, 2));
+                break;
+                
+            case 'batch-move':
+                // 批量移动笔记
+                if (!args.ids || !args.to) {
+                    console.error('Error: --ids and --to are required for batch-move command');
+                    process.exit(1);
+                }
+                
+                const moveIds = args.ids.split(',').map(id => id.trim());
+                const batchMoveResult = manager.batchMove(
+                    moveIds,
+                    args.level || 'workspace',
+                    args.to,
+                    args['agent-name'],
+                    args['to-agent-name']
+                );
+                
+                console.log(JSON.stringify(batchMoveResult, null, 2));
+                break;
+                
+            case 'batch-tag':
+                // 批量添加标签
+                if (!args.ids || !args['add-tags']) {
+                    console.error('Error: --ids and --add-tags are required for batch-tag command');
+                    process.exit(1);
+                }
+                
+                const tagIds = args.ids.split(',').map(id => id.trim());
+                const addTags = args['add-tags'].split(',').map(t => t.trim());
+                const batchTagResult = manager.batchAddTags(
+                    tagIds,
+                    addTags,
+                    args.level || 'workspace',
+                    args['agent-name']
+                );
+                
+                console.log(JSON.stringify(batchTagResult, null, 2));
+                break;
+                
+            case 'batch-untag':
+                // 批量删除标签
+                if (!args.ids || !args['remove-tags']) {
+                    console.error('Error: --ids and --remove-tags are required for batch-untag command');
+                    process.exit(1);
+                }
+                
+                const untagIds = args.ids.split(',').map(id => id.trim());
+                const removeTags = args['remove-tags'].split(',').map(t => t.trim());
+                const batchUntagResult = manager.batchRemoveTags(
+                    untagIds,
+                    removeTags,
+                    args.level || 'workspace',
+                    args['agent-name']
+                );
+                
+                console.log(JSON.stringify(batchUntagResult, null, 2));
+                break;
+                
+            case 'export':
+                // 导出笔记
+                if (!args.id && !args.level) {
+                    console.error('Error: --id or --level is required for export command');
+                    process.exit(1);
+                }
+                
+                if (!args.output) {
+                    console.error('Error: --output is required for export command');
+                    process.exit(1);
+                }
+                
+                if (args.id) {
+                    // 导出单个笔记
+                    if (args.format === 'json') {
+                        const exportJsonResult = manager.exportNoteAsJson(
+                            args.level || 'workspace',
+                            args.id,
+                            args.output,
+                            args['agent-name']
+                        );
+                        console.log(JSON.stringify(exportJsonResult, null, 2));
+                    } else {
+                        const exportResult = manager.exportNote(
+                            args.level || 'workspace',
+                            args.id,
+                            args.output,
+                            args['agent-name']
+                        );
+                        console.log(JSON.stringify(exportResult, null, 2));
+                    }
+                } else {
+                    // 批量导出为 ZIP
+                    manager.exportNotesAsZip(
+                        args.level,
+                        args.output,
+                        args['agent-name']
+                    ).then(result => {
+                        console.log(JSON.stringify(result, null, 2));
+                    }).catch(error => {
+                        console.error(`Error: ${error.message}`);
+                        process.exit(1);
+                    });
+                }
+                break;
+                
+            case 'import':
+                // 导入笔记
+                if (!args.file) {
+                    console.error('Error: --file is required for import command');
+                    process.exit(1);
+                }
+                
+                if (args.file.endsWith('.zip')) {
+                    // 从 ZIP 导入
+                    manager.importNotesFromZip(
+                        args.file,
+                        args.level || 'workspace',
+                        args['agent-name']
+                    ).then(result => {
+                        console.log(JSON.stringify(result, null, 2));
+                    }).catch(error => {
+                        console.error(`Error: ${error.message}`);
+                        process.exit(1);
+                    });
+                } else if (args.file.endsWith('.json')) {
+                    // 从 JSON 导入
+                    const importJsonResult = manager.importNoteFromJson(
+                        args.file,
+                        args.level || 'workspace',
+                        args['agent-name']
+                    );
+                    console.log(JSON.stringify(importJsonResult, null, 2));
+                } else {
+                    // 从 Markdown 导入
+                    const importResult = manager.importNoteFromMarkdown(
+                        args.file,
+                        args.level || 'workspace',
+                        args['agent-name']
+                    );
+                    console.log(JSON.stringify(importResult, null, 2));
+                }
+                break;
+                
+            case 'history':
+                // 查看笔记历史版本
+                if (!args.id) {
+                    console.error('Error: --id is required for history command');
+                    process.exit(1);
+                }
+                
+                if (args.version) {
+                    // 查看特定版本
+                    const historyVersionResult = manager.readHistory(
+                        args.level || 'workspace',
+                        args.id,
+                        parseInt(args.version),
+                        args['agent-name']
+                    );
+                    console.log(JSON.stringify(historyVersionResult, null, 2));
+                } else {
+                    // 列出所有版本
+                    const historyResult = manager.listHistory(
+                        args.level || 'workspace',
+                        args.id,
+                        args['agent-name']
+                    );
+                    console.log(JSON.stringify(historyResult, null, 2));
+                }
+                break;
+                
+            case 'rollback':
+                // 回滚到指定版本
+                if (!args.id || !args.version) {
+                    console.error('Error: --id and --version are required for rollback command');
+                    process.exit(1);
+                }
+                
+                const rollbackResult = manager.rollbackHistory(
+                    args.level || 'workspace',
+                    args.id,
+                    parseInt(args.version),
+                    args['agent-name']
+                );
+                console.log(JSON.stringify(rollbackResult, null, 2));
+                break;
+                
+            case 'stats':
+                // 显示笔记统计信息
+                const statsResult = manager.getStats(
+                    args.level || null,
+                    args['agent-name'],
+                    args.tags === 'true'
+                );
+                console.log(JSON.stringify(statsResult, null, 2));
+                break;
+                
             default:
                 // 无效命令，显示使用帮助
-                console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, or search');
+                console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, search, templates, or template');
                 console.error('Usage: node notes.js <command> [options]');
                 console.error('Commands:');
-                console.error('  create --level <global|workspace|agent> --title "<title>" --content "<content>" [--tags "tag1,tag2"] [--agent-name "<agent-name>"]');
-                console.error('  list --level <global|workspace|agent> [--tag "<tag>"] [--agent-name "<agent-name>"]');
+                console.error('  create --level <global|workspace|agent> --title "<title>" [--content "<content>"] [--tags "tag1,tag2"] [--template <template-name>] [--agent-name "<agent-name>"]');
+                console.error('  list --level <global|workspace|agent> [--tag "<tag>"] [--sort <created|updated|title|id>] [--order <asc|desc>] [--agent-name "<agent-name>"]');
                 console.error('  read --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
                 console.error('  update --level <global|workspace|agent> --id "<note-id>" --content "<content>" [--tags "tag1,tag2"] [--agent-name "<agent-name>"]');
                 console.error('  delete --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
@@ -939,6 +2108,20 @@ function main() {
                 console.error('  jumpto --level <global|workspace|agent> --id "<note-id>" [--lineno <line>] [--column <col>] [--agent-name "<agent-name>"]');
                 console.error('  parse-jumps --content "<content-with-jumps>"');
                 console.error('  search --query "<keyword>" [--level <global|workspace|agent>] [--search-in <all|title|content>] [--case-sensitive true] [--whole-word true] [--regex true]');
+                console.error('  templates - 列出所有可用模板');
+                console.error('  template --name <template-name> - 获取指定模板内容');
+                console.error('  batch-delete --ids "id1,id2,id3" --level <level> [--agent-name "<agent-name>"]');
+                console.error('  batch-move --ids "id1,id2,id3" --level <from-level> --to <to-level> [--to-agent-name "<agent-name>"]');
+                console.error('  batch-tag --ids "id1,id2,id3" --add-tags "tag1,tag2" --level <level> [--agent-name "<agent-name>"]');
+                console.error('  batch-untag --ids "id1,id2,id3" --remove-tags "tag1,tag2" --level <level> [--agent-name "<agent-name>"]');
+                console.error('  export --id "<note-id>" --level <level> --output <output-path> [--format md|json] [--agent-name "<agent-name>"]');
+                console.error('  export --level <level> --output <output.zip> [--agent-name "<agent-name>"] (批量导出为 ZIP)');
+                console.error('  import --file <file-path> --level <level> [--agent-name "<agent-name>"]');
+                console.error('  history --level <level> --id "<note-id>" [--version <version>] [--agent-name "<agent-name>"]');
+                console.error('  rollback --level <level> --id "<note-id>" --version <version> [--agent-name "<agent-name>"]');
+                console.error('  stats [--level <global|workspace|agent>] [--tags true] [--agent-name "<agent-name>"]');
+                console.error('');
+                console.error('Available templates: meeting, todo, daily, idea, bug, feature');
                 process.exit(1);
         }
     } catch (error) {

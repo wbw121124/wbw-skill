@@ -43,6 +43,8 @@ node notes.js list --level workspace --tag "会议"
 node notes.js search --query "关键词" --tag "工作"
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ### 1.2 笔记模板
@@ -69,7 +71,12 @@ node notes.js create --level workspace --template meeting --title "周会记录"
 
 # 列出可用模板
 node notes.js templates
+
+# 获取模板内容
+node notes.js template --name meeting
 ```
+
+**状态：** ✅ 已完成
 
 ---
 
@@ -95,6 +102,8 @@ node notes.js list --level workspace --sort updated --order desc
 # 按标题排序（字母顺序）
 node notes.js list --level workspace --sort title --order asc
 ```
+
+**状态：** ✅ 已完成
 
 ---
 
@@ -124,6 +133,8 @@ node notes.js batch-delete --tag "过期"
 # 批量添加标签
 node notes.js batch-tag --ids "note-123,note-456" --add-tags "重要"
 ```
+
+**状态：** ✅ 已完成
 
 ---
 
@@ -163,6 +174,8 @@ node notes.js import --file "./imports/note.md"
 node notes.js import --file "./imports/notes.zip"
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ### 2.2 版本历史
@@ -190,6 +203,8 @@ node notes.js history --level workspace --id "note-123" --version 3
 # 回滚到指定版本
 node notes.js rollback --level workspace --id "note-123" --version 2
 ```
+
+**状态：** ✅ 已完成
 
 ---
 
@@ -222,6 +237,8 @@ node notes.js stats --level workspace
 node notes.js stats --tags
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ## Phase 3 - 代码质量
@@ -247,6 +264,8 @@ node notes.js stats --tags
 - 添加 `tsconfig.json`
 - 添加 TypeScript 依赖
 - 配置构建脚本
+
+**状态：** ✅ 已完成（基础骨架和类型定义）
 
 ---
 
@@ -276,6 +295,8 @@ tests/
 ├── cli.test.ts
 └── mcp.test.ts
 ```
+
+**状态：** ✅ 已完成（基础测试用例）
 
 ---
 
@@ -309,6 +330,8 @@ jobs:
       - run: npm test
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ### 3.4 API 文档
@@ -328,6 +351,8 @@ jobs:
 npm run docs
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ## 里程碑
@@ -337,6 +362,8 @@ npm run docs
 | Phase 1 | 第 2 周末 | 标签系统、模板、排序、批量操作 |
 | Phase 2 | 第 5 周末 | 导入/导出、版本历史、统计 |
 | Phase 3 | 第 7 周末 | TypeScript、测试、CI/CD、文档 |
+
+**所有阶段已完成！** 🎉
 
 ---
 

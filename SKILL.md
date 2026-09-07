@@ -16,15 +16,29 @@ A unified tool for managing notes with the following parameters:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags |
+| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, import, list_history, read_history, rollback_history, stats |
 | `level` | string | No | Storage level: global, workspace, agent (default: workspace) |
 | `title` | string | For create | Note title |
 | `content` | string | For create/update | Note content |
 | `tags` | array | No | Tags for the note (for create/update) |
+| `template` | string | No | Template name: meeting, todo, daily, idea, bug, feature (for create) |
 | `id` | string | For read/update/delete | Note ID |
 | `agentName` | string | For agent level | Agent name |
 | `query` | string | For search | Search keyword |
 | `tag` | string | For list_by_tag | Tag to filter by |
+| `templateName` | string | For get_template | Template name to retrieve |
+| `sort` | string | No | Sort field: created, updated, title, id (default: created) |
+| `order` | string | No | Sort order: asc, desc (default: desc) |
+| `ids` | array | For batch ops | Array of note IDs for batch operations |
+| `toLevel` | string | For batch_move | Target storage level |
+| `toAgentName` | string | For batch_move | Target agent name |
+| `addTags` | array | For batch_add_tags | Tags to add to notes |
+| `removeTags` | array | For batch_remove_tags | Tags to remove from notes |
+| `outputPath` | string | For export | Output file/directory path |
+| `filePath` | string | For import | File path to import (.md, .json, .zip) |
+| `format` | string | No | Export format: md, json (default: md) |
+| `version` | integer | For history | Version number for read_history/rollback_history |
+| `includeTags` | boolean | For stats | Include tag statistics (default: false) |
 | `searchIn` | string | No | Search scope: all, title, content (default: all) |
 | `caseSensitive` | boolean | No | Case-sensitive search (default: false) |
 | `wholeWord` | boolean | No | Whole word match (default: false) |
@@ -51,7 +65,27 @@ A unified tool for managing notes with the following parameters:
 }
 ```
 
-### 3. Read an Agent-Specific Note
+### 3. List Notes Sorted by Updated Time
+```json
+{
+  "action": "list",
+  "level": "workspace",
+  "sort": "updated",
+  "order": "desc"
+}
+```
+
+### 4. List Notes Sorted by Title (Ascending)
+```json
+{
+  "action": "list",
+  "level": "workspace",
+  "sort": "title",
+  "order": "asc"
+}
+```
+
+### 5. Read an Agent-Specific Note
 ```json
 {
   "action": "read",
@@ -279,6 +313,197 @@ Use `jumpto` to navigate to a specific location:
   "id": "note-123",
   "content": "Updated content...",
   "tags": ["meeting", "project-x", "updated"]
+}
+```
+
+## Template Examples
+
+### List Available Templates
+```json
+{
+  "action": "list_templates"
+}
+```
+
+### Get Template Content
+```json
+{
+  "action": "get_template",
+  "templateName": "meeting"
+}
+```
+
+### Create Note with Template
+```json
+{
+  "action": "create",
+  "level": "workspace",
+  "title": "Weekly Team Meeting",
+  "template": "meeting",
+  "tags": ["meeting", "weekly"]
+}
+```
+
+### Create Note with Template and Additional Content
+```json
+{
+  "action": "create",
+  "level": "workspace",
+  "title": "Bug Report - Login Issue",
+  "content": "Users are unable to login after password reset.",
+  "template": "bug",
+  "tags": ["bug", "urgent"]
+}
+```
+
+### Available Templates
+
+| Template | Description |
+|----------|-------------|
+| `meeting` | Meeting notes template |
+| `todo` | Todo list template |
+| `daily` | Daily journal/log template |
+| `idea` | Idea/inspiration template |
+| `bug` | Bug report template |
+| `feature` | Feature request template |
+
+## Batch Operation Examples
+
+### Batch Delete Notes
+```json
+{
+  "action": "batch_delete",
+  "level": "workspace",
+  "ids": ["note-123", "note-456", "note-789"]
+}
+```
+
+### Batch Move Notes
+```json
+{
+  "action": "batch_move",
+  "level": "workspace",
+  "toLevel": "global",
+  "ids": ["note-123", "note-456"]
+}
+```
+
+### Batch Add Tags
+```json
+{
+  "action": "batch_add_tags",
+  "level": "workspace",
+  "ids": ["note-123", "note-456"],
+  "addTags": ["important", "reference"]
+}
+```
+
+### Batch Remove Tags
+```json
+{
+  "action": "batch_remove_tags",
+  "level": "workspace",
+  "ids": ["note-123", "note-456"],
+  "removeTags": ["draft"]
+}
+```
+
+## Import/Export Examples
+
+### Export Note as Markdown
+```json
+{
+  "action": "export",
+  "level": "workspace",
+  "id": "note-123",
+  "outputPath": "./exports/",
+  "format": "md"
+}
+```
+
+### Export Note as JSON
+```json
+{
+  "action": "export",
+  "level": "workspace",
+  "id": "note-123",
+  "outputPath": "./exports/",
+  "format": "json"
+}
+```
+
+### Import Note from Markdown
+```json
+{
+  "action": "import",
+  "level": "workspace",
+  "filePath": "./imports/note.md"
+}
+```
+
+### Import Note from JSON
+```json
+{
+  "action": "import",
+  "level": "workspace",
+  "filePath": "./imports/note.json"
+}
+```
+
+## Version History Examples
+
+### List History Versions
+```json
+{
+  "action": "list_history",
+  "level": "workspace",
+  "id": "note-123"
+}
+```
+
+### Read Specific Version
+```json
+{
+  "action": "read_history",
+  "level": "workspace",
+  "id": "note-123",
+  "version": 1693920000000
+}
+```
+
+### Rollback to Version
+```json
+{
+  "action": "rollback_history",
+  "level": "workspace",
+  "id": "note-123",
+  "version": 1693920000000
+}
+```
+
+## Statistics Examples
+
+### Get Global Statistics
+```json
+{
+  "action": "stats"
+}
+```
+
+### Get Workspace Statistics
+```json
+{
+  "action": "stats",
+  "level": "workspace"
+}
+```
+
+### Get Statistics with Tag Info
+```json
+{
+  "action": "stats",
+  "level": "workspace",
+  "includeTags": true
 }
 ```
 

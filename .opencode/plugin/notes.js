@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const archiver = require('archiver');
 
 /**
  * 跳转语法解析器
@@ -78,6 +79,202 @@ class NotesManager {
         this.globalDir = path.join(os.homedir(), '.wbw-skill', 'notes', 'global');
         this.workspaceDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'workspace');
         this.agentDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'agent');
+        this.historyDir = path.join(process.cwd(), '.wbw-skill', 'history');
+
+        // 预定义笔记模板
+        this.templates = {
+            meeting: {
+                name: 'meeting',
+                description: '会议记录模板',
+                content: `# 会议记录
+
+## 会议信息
+- **日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **时间：** 
+- **地点：** 
+- **参与者：** 
+
+## 议题
+1. 
+
+## 讨论内容
+
+
+## 决议事项
+- [ ] 
+
+## 下一步行动
+- [ ] 
+
+## 备注
+`
+            },
+            todo: {
+                name: 'todo',
+                description: '待办事项模板',
+                content: `# 待办事项
+
+## 紧急且重要
+- [ ] 
+
+## 重要但不紧急
+- [ ] 
+
+## 紧急但不重要
+- [ ] 
+
+## 不紧急不重要
+- [ ] 
+
+## 已完成
+- [x] 
+
+## 备注
+`
+            },
+            daily: {
+                name: 'daily',
+                description: '日记/日志模板',
+                content: `# ${new Date().toLocaleDateString('zh-CN')} 工作日志
+
+## 今日目标
+1. 
+
+## 工作内容
+### 上午
+- 
+
+### 下午
+- 
+
+## 遇到的问题
+
+
+## 解决方案
+
+
+## 明日计划
+1. 
+
+## 备注
+`
+            },
+            idea: {
+                name: 'idea',
+                description: '想法/灵感模板',
+                content: `# 想法记录
+
+## 标题
+**灵感来源：** 
+
+## 核心想法
+
+
+## 详细描述
+
+
+## 可行性分析
+- **技术可行性：** 
+- **资源需求：** 
+- **预期收益：** 
+
+## 相关链接
+- 
+
+## 下一步
+- [ ] 
+`
+            },
+            bug: {
+                name: 'bug',
+                description: 'Bug 报告模板',
+                content: `# Bug 报告
+
+## 基本信息
+- **报告日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **报告人：** 
+- **优先级：** [高/中/低]
+
+## Bug 描述
+### 现象
+
+
+### 预期行为
+
+
+## 复现步骤
+1. 
+2. 
+3. 
+
+## 环境信息
+- **操作系统：** 
+- **浏览器/应用版本：** 
+- **其他环境：** 
+
+## 截图/日志
+
+
+## 临时解决方案
+
+
+## 根本原因分析
+
+
+## 修复建议
+
+
+## 状态
+- [ ] 待确认
+- [ ] 处理中
+- [ ] 已修复
+- [ ] 已验证
+`
+            },
+            feature: {
+                name: 'feature',
+                description: '功能需求模板',
+                content: `# 功能需求
+
+## 基本信息
+- **需求日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **提出者：** 
+- **优先级：** [高/中/低]
+
+## 需求背景
+
+
+## 功能描述
+
+
+## 用户故事
+作为 **[角色]**，我想要 **[功能]**，以便 **[价值]**。
+
+## 验收标准
+- [ ] 
+- [ ] 
+- [ ] 
+
+## 技术方案
+
+
+## 影响范围
+- **前端：** 
+- **后端：** 
+- **数据库：** 
+
+## 工作量评估
+- **预估工时：** 
+- **负责人：** 
+
+## 状态
+- [ ] 待评审
+- [ ] 已批准
+- [ ] 开发中
+- [ ] 已完成
+`
+            }
+        };
     }
 
     getDir(level, agentName = null) {
@@ -94,6 +291,28 @@ class NotesManager {
             default:
                 throw new Error(`Invalid level: ${level}. Use global, workspace, or agent.`);
         }
+    }
+
+    /**
+     * 获取所有可用模板列表
+     */
+    listTemplates() {
+        const templateList = Object.values(this.templates).map(t => ({
+            name: t.name,
+            description: t.description
+        }));
+        return { templates: templateList, count: templateList.length };
+    }
+
+    /**
+     * 获取指定模板的内容
+     */
+    getTemplate(templateName) {
+        const template = this.templates[templateName];
+        if (!template) {
+            throw new Error(`Template not found: ${templateName}. Available: ${Object.keys(this.templates).join(', ')}`);
+        }
+        return { ...template };
     }
 
     generateId() {
@@ -137,12 +356,18 @@ class NotesManager {
         };
     }
 
-    createNote(level, title, content, agentName = null, tags = []) {
+    createNote(level, title, content, agentName = null, tags = [], template = null) {
         const dir = this.getDir(level, agentName);
         fs.mkdirSync(dir, { recursive: true });
         
         const id = this.generateId();
         const now = new Date().toISOString();
+        
+        // 如果指定了模板，使用模板内容
+        if (template) {
+            const templateData = this.getTemplate(template);
+            content = content ? `${content}\n\n---\n\n${templateData.content}` : templateData.content;
+        }
         
         const tagsStr = tags.length > 0 ? `[${tags.join(', ')}]` : '[]';
         
@@ -175,7 +400,8 @@ class NotesManager {
         };
     }
 
-    listNotes(level, agentName = null) {
+    listNotes(level, agentName = null, options = {}) {
+        const { sort = 'created', order = 'desc' } = options;
         const dir = this.getDir(level, agentName);
         
         if (!fs.existsSync(dir)) {
@@ -201,7 +427,26 @@ class NotesManager {
             });
         }
         
-        notes.sort((a, b) => new Date(b.created) - new Date(a.created));
+        // 根据指定字段排序
+        notes.sort((a, b) => {
+            let comparison = 0;
+            switch (sort) {
+                case 'updated':
+                    comparison = new Date(a.updated || a.created) - new Date(b.updated || b.created);
+                    break;
+                case 'title':
+                    comparison = (a.title || '').localeCompare(b.title || '');
+                    break;
+                case 'id':
+                    comparison = (a.id || '').localeCompare(b.id || '');
+                    break;
+                case 'created':
+                default:
+                    comparison = new Date(a.created) - new Date(b.created);
+                    break;
+            }
+            return order === 'desc' ? -comparison : comparison;
+        });
         
         return { notes, count: notes.length };
     }
@@ -367,6 +612,543 @@ class NotesManager {
         return { notes: results, count: results.length, tag };
     }
 
+    /**
+     * 批量删除笔记
+     */
+    batchDelete(ids, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                this.deleteNote(level, id, agentName);
+                results.push({ id, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            deleted: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量移动笔记到其他级别
+     */
+    batchMove(ids, fromLevel, toLevel, fromAgentName = null, toAgentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(fromLevel, id, fromAgentName, false);
+                const createResult = this.createNote(toLevel, note.title, note.content, toAgentName, note.tags);
+                this.deleteNote(fromLevel, id, fromAgentName);
+                results.push({ id, newId: createResult.id, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            moved: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量添加标签到笔记
+     */
+    batchAddTags(ids, addTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(level, id, agentName, false);
+                const existingTags = note.tags || [];
+                const newTags = [...new Set([...existingTags, ...addTags])];
+                this.updateNote(level, id, note.content, agentName, newTags);
+                results.push({ id, tags: newTags, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量删除标签
+     */
+    batchRemoveTags(ids, removeTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(level, id, agentName, false);
+                const existingTags = note.tags || [];
+                const newTags = existingTags.filter(t => !removeTags.includes(t));
+                this.updateNote(level, id, note.content, agentName, newTags);
+                results.push({ id, tags: newTags, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 导出单个笔记为 Markdown 文件
+     */
+    exportNote(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        const dir = this.getDir(level, agentName);
+        const sourcePath = path.join(dir, `${id}.md`);
+        
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.md`;
+        const destPath = path.join(outputPath, fileName);
+        
+        fs.copyFileSync(sourcePath, destPath);
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            source: sourcePath,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 导出笔记为 JSON 格式
+     */
+    exportNoteAsJson(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.json`;
+        const destPath = path.join(outputPath, fileName);
+        
+        const jsonData = {
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            created: note.created,
+            updated: note.updated,
+            level: note.level,
+            agentName: note.agentName,
+            tags: note.tags,
+            exportedAt: new Date().toISOString()
+        };
+        
+        fs.writeFileSync(destPath, JSON.stringify(jsonData, null, 2), 'utf8');
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 批量导出笔记为 ZIP 压缩包
+     */
+    async exportNotesAsZip(level, outputPath, agentName = null) {
+        const dir = this.getDir(level, agentName);
+        
+        if (!fs.existsSync(dir)) {
+            throw new Error(`No notes found for level: ${level}`);
+        }
+        
+        const files = fs.readdirSync(dir).filter(file => file.endsWith('.md'));
+        
+        if (files.length === 0) {
+            throw new Error(`No notes found for level: ${level}`);
+        }
+        
+        const outputDir = path.dirname(outputPath);
+        fs.mkdirSync(outputDir, { recursive: true });
+        
+        return new Promise((resolve, reject) => {
+            const output = fs.createWriteStream(outputPath);
+            const archive = archiver('zip', { zlib: { level: 9 } });
+            
+            output.on('close', () => {
+                resolve({
+                    success: true,
+                    level,
+                    count: files.length,
+                    destination: outputPath,
+                    size: archive.pointer()
+                });
+            });
+            
+            archive.on('error', reject);
+            
+            archive.pipe(output);
+            
+            for (const file of files) {
+                const filePath = path.join(dir, file);
+                archive.file(filePath, { name: file });
+            }
+            
+            archive.finalize();
+        });
+    }
+
+    /**
+     * 导入笔记从 Markdown 文件
+     */
+    importNoteFromMarkdown(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        const title = frontmatter.title || path.basename(filePath, '.md');
+        const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+        
+        const result = this.createNote(level, title, noteContent, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 导入笔记从 JSON 文件
+     */
+    importNoteFromJson(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const jsonData = JSON.parse(content);
+        
+        const title = jsonData.title || path.basename(filePath, '.json');
+        const tags = Array.isArray(jsonData.tags) ? jsonData.tags : [];
+        
+        const result = this.createNote(level, title, jsonData.content, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 批量导入笔记从 ZIP 压缩包
+     */
+    async importNotesFromZip(zipPath, level, agentName = null) {
+        const AdmZip = require('adm-zip');
+        
+        if (!fs.existsSync(zipPath)) {
+            throw new Error(`ZIP file not found: ${zipPath}`);
+        }
+        
+        const zip = new AdmZip(zipPath);
+        const entries = zip.getEntries();
+        
+        const results = [];
+        const errors = [];
+        
+        for (const entry of entries) {
+            if (entry.entryName.endsWith('.md')) {
+                try {
+                    const content = entry.getData().toString('utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+                    
+                    const title = frontmatter.title || entry.entryName.replace('.md', '');
+                    const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+                    
+                    const result = this.createNote(level, title, noteContent, agentName, tags);
+                    results.push({ file: entry.entryName, ...result });
+                } catch (error) {
+                    errors.push({ file: entry.entryName, error: error.message });
+                }
+            }
+        }
+        
+        return {
+            success: errors.length === 0,
+            imported: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 保存笔记历史版本
+     */
+    saveHistory(level, id, content, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        fs.mkdirSync(historyLevelDir, { recursive: true });
+        
+        const note = this.readNote(level, id, agentName, false);
+        
+        const version = Date.now();
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        const frontmatter = [
+            '---',
+            `id: "${id}"`,
+            `title: "${note.title}"`,
+            `version: "${version}"`,
+            `savedAt: "${new Date().toISOString()}"`,
+            `level: "${level}"`,
+            agentName ? `agent: "${agentName}"` : null,
+            '---'
+        ].filter(Boolean).join('\n');
+        
+        const versionContent = `${frontmatter}\n\n${content}`;
+        fs.writeFileSync(versionPath, versionContent, 'utf8');
+        
+        this.cleanupHistory(historyLevelDir, id, 10);
+        
+        return {
+            success: true,
+            id,
+            version,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 清理旧的历史版本
+     */
+    cleanupHistory(historyDir, noteId, keepCount = 10) {
+        if (!fs.existsSync(historyDir)) {
+            return;
+        }
+        
+        const files = fs.readdirSync(historyDir)
+            .filter(f => f.startsWith(`${noteId}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        if (files.length > keepCount) {
+            for (let i = keepCount; i < files.length; i++) {
+                fs.unlinkSync(path.join(historyDir, files[i]));
+            }
+        }
+    }
+
+    /**
+     * 查看笔记历史版本列表
+     */
+    listHistory(level, id, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        
+        if (!fs.existsSync(historyLevelDir)) {
+            return { versions: [], count: 0 };
+        }
+        
+        const files = fs.readdirSync(historyLevelDir)
+            .filter(f => f.startsWith(`${id}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        const versions = [];
+        for (const file of files) {
+            const filePath = path.join(historyLevelDir, file);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const { frontmatter } = this.parseNote(content);
+            
+            versions.push({
+                version: parseInt(frontmatter.version || file.replace(`${id}_v`, '').replace('.md', '')),
+                savedAt: frontmatter.savedAt,
+                path: filePath
+            });
+        }
+        
+        return { versions, count: versions.length };
+    }
+
+    /**
+     * 查看特定历史版本内容
+     */
+    readHistory(level, id, version, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        if (!fs.existsSync(versionPath)) {
+            throw new Error(`Version not found: ${id} v${version}`);
+        }
+        
+        const content = fs.readFileSync(versionPath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        return {
+            id: frontmatter.id || id,
+            title: frontmatter.title,
+            version: parseInt(frontmatter.version || version),
+            savedAt: frontmatter.savedAt,
+            content: noteContent,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 回滚到指定历史版本
+     */
+    rollbackHistory(level, id, version, agentName = null) {
+        const historyVersion = this.readHistory(level, id, version, agentName);
+        
+        const currentNote = this.readNote(level, id, agentName, false);
+        this.saveHistory(level, id, currentNote.content, agentName);
+        
+        const updateResult = this.updateNote(level, id, historyVersion.content, agentName);
+        
+        return {
+            success: true,
+            id,
+            rolledBackTo: version,
+            ...updateResult
+        };
+    }
+
+    /**
+     * 获取笔记统计信息
+     */
+    getStats(level = null, agentName = null, includeTags = false) {
+        const stats = {
+            totalNotes: 0,
+            totalWords: 0,
+            totalCharacters: 0,
+            byLevel: {},
+            recentCreated: [],
+            recentUpdated: [],
+            storageSize: 0
+        };
+
+        const levels = level ? [level] : ['global', 'workspace', 'agent'];
+
+        for (const lvl of levels) {
+            let dirs = [];
+            
+            if (lvl === 'agent' && agentName) {
+                const agentDir = path.join(this.agentDir, agentName);
+                if (fs.existsSync(agentDir)) {
+                    dirs.push({ dir: agentDir, level: 'agent', agent: agentName });
+                }
+            } else if (lvl === 'agent' && !agentName) {
+                if (fs.existsSync(this.agentDir)) {
+                    const agents = fs.readdirSync(this.agentDir).filter(f => {
+                        const fullPath = path.join(this.agentDir, f);
+                        return fs.statSync(fullPath).isDirectory();
+                    });
+                    for (const agent of agents) {
+                        dirs.push({ 
+                            dir: path.join(this.agentDir, agent), 
+                            level: 'agent', 
+                            agent: agent 
+                        });
+                    }
+                }
+            } else if (lvl === 'global') {
+                dirs.push({ dir: this.globalDir, level: 'global', agent: null });
+            } else if (lvl === 'workspace') {
+                dirs.push({ dir: this.workspaceDir, level: 'workspace', agent: null });
+            }
+
+            for (const { dir, level: resultLevel, agent } of dirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+                
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+                    
+                    stats.totalCharacters += noteContent.length;
+                    const words = noteContent.split(/\s+/).filter(w => w.length > 0);
+                    stats.totalWords += words.length;
+                    stats.totalNotes++;
+                    
+                    if (!stats.byLevel[resultLevel]) {
+                        stats.byLevel[resultLevel] = 0;
+                    }
+                    stats.byLevel[resultLevel]++;
+                    
+                    if (frontmatter.created) {
+                        stats.recentCreated.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            created: frontmatter.created,
+                            level: resultLevel,
+                            agentName: agent
+                        });
+                    }
+                    
+                    if (frontmatter.updated) {
+                        stats.recentUpdated.push({
+                            id: frontmatter.id || file.replace('.md', ''),
+                            title: frontmatter.title || 'Untitled',
+                            updated: frontmatter.updated,
+                            level: resultLevel,
+                            agentName: agent
+                        });
+                    }
+                    
+                    const fileStats = fs.statSync(filePath);
+                    stats.storageSize += fileStats.size;
+                }
+            }
+        }
+
+        stats.recentCreated.sort((a, b) => new Date(b.created) - new Date(a.created));
+        stats.recentUpdated.sort((a, b) => new Date(b.updated) - new Date(a.updated));
+        
+        stats.recentCreated = stats.recentCreated.slice(0, 10);
+        stats.recentUpdated = stats.recentUpdated.slice(0, 10);
+
+        if (includeTags) {
+            stats.tags = this.listTags(level, agentName);
+        }
+
+        return stats;
+    }
+
     listTags(level = null, agentName = null) {
         const tagCount = {};
         const levels = level ? [level] : ['global', 'workspace', 'agent'];
@@ -444,7 +1226,7 @@ export default async ({ client, project, directory, $ }) => {
                     properties: {
                         action: {
                             type: "string",
-                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags"],
+                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template", "batch_delete", "batch_move", "batch_add_tags", "batch_remove_tags", "export", "import", "list_history", "read_history", "rollback_history", "stats"],
                             description: "The action to perform"
                         },
                         level: {
@@ -512,23 +1294,92 @@ export default async ({ client, project, directory, $ }) => {
                             enum: ["all", "title", "content"],
                             description: "Search scope: all, title, content (default: all)",
                             default: "all"
+                        },
+                        template: {
+                            type: "string",
+                            enum: ["meeting", "todo", "daily", "idea", "bug", "feature"],
+                            description: "Template name to use (for create action)"
+                        },
+                        templateName: {
+                            type: "string",
+                            enum: ["meeting", "todo", "daily", "idea", "bug", "feature"],
+                            description: "Template name (for get_template action)"
+                        },
+                        sort: {
+                            type: "string",
+                            enum: ["created", "updated", "title", "id"],
+                            description: "Sort field (for list action, default: created)"
+                        },
+                        order: {
+                            type: "string",
+                            enum: ["asc", "desc"],
+                            description: "Sort order (for list action, default: desc)"
+                        },
+                        ids: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Array of note IDs (for batch operations)"
+                        },
+                        toLevel: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Target storage level (for batch_move action)"
+                        },
+                        toAgentName: {
+                            type: "string",
+                            description: "Target agent name (for batch_move action)"
+                        },
+                        addTags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags to add (for batch_add_tags action)"
+                        },
+                        removeTags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags to remove (for batch_remove_tags action)"
+                        },
+                        outputPath: {
+                            type: "string",
+                            description: "Output path (for export action)"
+                        },
+                        filePath: {
+                            type: "string",
+                            description: "File path (for import action)"
+                        },
+                        format: {
+                            type: "string",
+                            enum: ["md", "json"],
+                            description: "Export format (for export action, default: md)"
+                        },
+                        version: {
+                            type: "integer",
+                            description: "Version number (for read_history and rollback_history actions)"
+                        },
+                        includeTags: {
+                            type: "boolean",
+                            description: "Include tag statistics (for stats action, default: false)"
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn } = args;
+                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order, ids, toLevel, toAgentName, addTags, removeTags, outputPath, filePath, format, version, includeTags } = args;
 
                     try {
                         switch (action) {
                             case 'create':
-                                if (!title || !content) {
-                                    return { error: "Title and content are required for create action" };
+                                if (!title) {
+                                    return { error: "Title is required for create action" };
                                 }
-                                return manager.createNote(level || 'workspace', title, content, agentName, tags || []);
+                                return manager.createNote(level || 'workspace', title, content || '', agentName, tags || [], template);
 
                             case 'list':
-                                return manager.listNotes(level || 'workspace', agentName);
+                                const listOptions = {
+                                    sort: sort || 'created',
+                                    order: order || 'desc'
+                                };
+                                return manager.listNotes(level || 'workspace', agentName, listOptions);
 
                             case 'read':
                                 if (!id) {
@@ -613,8 +1464,88 @@ export default async ({ client, project, directory, $ }) => {
                             case 'list_tags':
                                 return manager.listTags(level, agentName);
 
+                            case 'list_templates':
+                                return manager.listTemplates();
+
+                            case 'get_template':
+                                if (!templateName) {
+                                    return { error: "Template name is required for get_template action" };
+                                }
+                                return manager.getTemplate(templateName);
+
+                            case 'batch_delete':
+                                if (!ids || ids.length === 0) {
+                                    return { error: "IDs are required for batch_delete action" };
+                                }
+                                return manager.batchDelete(ids, level || 'workspace', agentName);
+
+                            case 'batch_move':
+                                if (!ids || ids.length === 0 || !toLevel) {
+                                    return { error: "IDs and target level are required for batch_move action" };
+                                }
+                                return manager.batchMove(ids, level || 'workspace', toLevel, agentName, toAgentName);
+
+                            case 'batch_add_tags':
+                                if (!ids || ids.length === 0 || !addTags || addTags.length === 0) {
+                                    return { error: "IDs and tags are required for batch_add_tags action" };
+                                }
+                                return manager.batchAddTags(ids, addTags, level || 'workspace', agentName);
+
+                            case 'batch_remove_tags':
+                                if (!ids || ids.length === 0 || !removeTags || removeTags.length === 0) {
+                                    return { error: "IDs and tags are required for batch_remove_tags action" };
+                                }
+                                return manager.batchRemoveTags(ids, removeTags, level || 'workspace', agentName);
+
+                            case 'export':
+                                if (!outputPath) {
+                                    return { error: "Output path is required for export action" };
+                                }
+                                if (id) {
+                                    if (format === 'json') {
+                                        return manager.exportNoteAsJson(level || 'workspace', id, outputPath, agentName);
+                                    } else {
+                                        return manager.exportNote(level || 'workspace', id, outputPath, agentName);
+                                    }
+                                } else {
+                                    return await manager.exportNotesAsZip(level || 'workspace', outputPath, agentName);
+                                }
+
+                            case 'import':
+                                if (!filePath) {
+                                    return { error: "File path is required for import action" };
+                                }
+                                if (filePath.endsWith('.zip')) {
+                                    return await manager.importNotesFromZip(filePath, level || 'workspace', agentName);
+                                } else if (filePath.endsWith('.json')) {
+                                    return manager.importNoteFromJson(filePath, level || 'workspace', agentName);
+                                } else {
+                                    return manager.importNoteFromMarkdown(filePath, level || 'workspace', agentName);
+                                }
+
+                            case 'list_history':
+                                if (!id) {
+                                    return { error: "ID is required for list_history action" };
+                                }
+                                return manager.listHistory(level || 'workspace', id, agentName);
+
+                            case 'read_history':
+                                if (!id || !version) {
+                                    return { error: "ID and version are required for read_history action" };
+                                }
+                                return manager.readHistory(level || 'workspace', id, version, agentName);
+
+                            case 'rollback_history':
+                                if (!id || !version) {
+                                    return { error: "ID and version are required for rollback_history action" };
+                                }
+                                return manager.rollbackHistory(level || 'workspace', id, version, agentName);
+
+                            case 'stats':
+                                return manager.getStats(level, agentName, includeTags);
+
                             default:
-                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, or list_tags.` };
+                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, import, list_history, read_history, rollback_history, or stats.` };
                         }
                     } catch (error) {
                         return { error: error.message };
