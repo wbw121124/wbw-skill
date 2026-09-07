@@ -1,7 +1,16 @@
-# WBW Skill
+# wbw-skill
 
 忽略 junction 导致的循环引用
 .opencode/skills/wbw-skill/
 
 # 忽略测试生成的笔记目录
 .wbw-skill/
+
+# 构建输出
+dist/
+
+# 依赖
+node_modules/
+
+# 包管理器锁文件
+package-lock.json

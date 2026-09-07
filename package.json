@@ -32,21 +32,27 @@
     "lint": "echo 'Linting passed'",
     "docs": "typedoc src/index.ts --out docs"
   },
-  "keywords": ["llm", "notes", "memo", "opencode", "mcp"],
+  "keywords": [
+    "llm",
+    "notes",
+    "memo",
+    "opencode",
+    "mcp"
+  ],
   "author": "wbw121124 <wbw121124@163.com>",
   "license": "MIT",
   "dependencies": {
-    "archiver": "^6.0.1",
-    "adm-zip": "^0.5.10"
+    "adm-zip": "^0.5.10",
+    "archiver": "^6.0.1"
   },
   "devDependencies": {
-    "typescript": "^5.3.3",
-    "@types/node": "^20.10.0",
-    "@types/archiver": "^6.0.2",
     "@types/adm-zip": "^0.5.4",
-    "jest": "^29.7.0",
+    "@types/archiver": "^6.0.2",
     "@types/jest": "^29.5.11",
+    "@types/node": "^20.10.0",
+    "jest": "^29.7.0",
     "ts-jest": "^29.1.1",
-    "typedoc": "^0.25.4"
+    "typedoc": "^0.25.4",
+    "typescript": "^5.9.3"
   }
 }
