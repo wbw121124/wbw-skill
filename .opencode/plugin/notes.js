@@ -78,6 +78,201 @@ class NotesManager {
         this.globalDir = path.join(os.homedir(), '.wbw-skill', 'notes', 'global');
         this.workspaceDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'workspace');
         this.agentDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'agent');
+
+        // 预定义笔记模板
+        this.templates = {
+            meeting: {
+                name: 'meeting',
+                description: '会议记录模板',
+                content: `# 会议记录
+
+## 会议信息
+- **日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **时间：** 
+- **地点：** 
+- **参与者：** 
+
+## 议题
+1. 
+
+## 讨论内容
+
+
+## 决议事项
+- [ ] 
+
+## 下一步行动
+- [ ] 
+
+## 备注
+`
+            },
+            todo: {
+                name: 'todo',
+                description: '待办事项模板',
+                content: `# 待办事项
+
+## 紧急且重要
+- [ ] 
+
+## 重要但不紧急
+- [ ] 
+
+## 紧急但不重要
+- [ ] 
+
+## 不紧急不重要
+- [ ] 
+
+## 已完成
+- [x] 
+
+## 备注
+`
+            },
+            daily: {
+                name: 'daily',
+                description: '日记/日志模板',
+                content: `# ${new Date().toLocaleDateString('zh-CN')} 工作日志
+
+## 今日目标
+1. 
+
+## 工作内容
+### 上午
+- 
+
+### 下午
+- 
+
+## 遇到的问题
+
+
+## 解决方案
+
+
+## 明日计划
+1. 
+
+## 备注
+`
+            },
+            idea: {
+                name: 'idea',
+                description: '想法/灵感模板',
+                content: `# 想法记录
+
+## 标题
+**灵感来源：** 
+
+## 核心想法
+
+
+## 详细描述
+
+
+## 可行性分析
+- **技术可行性：** 
+- **资源需求：** 
+- **预期收益：** 
+
+## 相关链接
+- 
+
+## 下一步
+- [ ] 
+`
+            },
+            bug: {
+                name: 'bug',
+                description: 'Bug 报告模板',
+                content: `# Bug 报告
+
+## 基本信息
+- **报告日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **报告人：** 
+- **优先级：** [高/中/低]
+
+## Bug 描述
+### 现象
+
+
+### 预期行为
+
+
+## 复现步骤
+1. 
+2. 
+3. 
+
+## 环境信息
+- **操作系统：** 
+- **浏览器/应用版本：** 
+- **其他环境：** 
+
+## 截图/日志
+
+
+## 临时解决方案
+
+
+## 根本原因分析
+
+
+## 修复建议
+
+
+## 状态
+- [ ] 待确认
+- [ ] 处理中
+- [ ] 已修复
+- [ ] 已验证
+`
+            },
+            feature: {
+                name: 'feature',
+                description: '功能需求模板',
+                content: `# 功能需求
+
+## 基本信息
+- **需求日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **提出者：** 
+- **优先级：** [高/中/低]
+
+## 需求背景
+
+
+## 功能描述
+
+
+## 用户故事
+作为 **[角色]**，我想要 **[功能]**，以便 **[价值]**。
+
+## 验收标准
+- [ ] 
+- [ ] 
+- [ ] 
+
+## 技术方案
+
+
+## 影响范围
+- **前端：** 
+- **后端：** 
+- **数据库：** 
+
+## 工作量评估
+- **预估工时：** 
+- **负责人：** 
+
+## 状态
+- [ ] 待评审
+- [ ] 已批准
+- [ ] 开发中
+- [ ] 已完成
+`
+            }
+        };
     }
 
     getDir(level, agentName = null) {
@@ -94,6 +289,28 @@ class NotesManager {
             default:
                 throw new Error(`Invalid level: ${level}. Use global, workspace, or agent.`);
         }
+    }
+
+    /**
+     * 获取所有可用模板列表
+     */
+    listTemplates() {
+        const templateList = Object.values(this.templates).map(t => ({
+            name: t.name,
+            description: t.description
+        }));
+        return { templates: templateList, count: templateList.length };
+    }
+
+    /**
+     * 获取指定模板的内容
+     */
+    getTemplate(templateName) {
+        const template = this.templates[templateName];
+        if (!template) {
+            throw new Error(`Template not found: ${templateName}. Available: ${Object.keys(this.templates).join(', ')}`);
+        }
+        return { ...template };
     }
 
     generateId() {
@@ -137,12 +354,18 @@ class NotesManager {
         };
     }
 
-    createNote(level, title, content, agentName = null, tags = []) {
+    createNote(level, title, content, agentName = null, tags = [], template = null) {
         const dir = this.getDir(level, agentName);
         fs.mkdirSync(dir, { recursive: true });
         
         const id = this.generateId();
         const now = new Date().toISOString();
+        
+        // 如果指定了模板，使用模板内容
+        if (template) {
+            const templateData = this.getTemplate(template);
+            content = content ? `${content}\n\n---\n\n${templateData.content}` : templateData.content;
+        }
         
         const tagsStr = tags.length > 0 ? `[${tags.join(', ')}]` : '[]';
         
@@ -444,7 +667,7 @@ export default async ({ client, project, directory, $ }) => {
                     properties: {
                         action: {
                             type: "string",
-                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags"],
+                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template"],
                             description: "The action to perform"
                         },
                         level: {
@@ -512,20 +735,30 @@ export default async ({ client, project, directory, $ }) => {
                             enum: ["all", "title", "content"],
                             description: "Search scope: all, title, content (default: all)",
                             default: "all"
+                        },
+                        template: {
+                            type: "string",
+                            enum: ["meeting", "todo", "daily", "idea", "bug", "feature"],
+                            description: "Template name to use (for create action)"
+                        },
+                        templateName: {
+                            type: "string",
+                            enum: ["meeting", "todo", "daily", "idea", "bug", "feature"],
+                            description: "Template name (for get_template action)"
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn } = args;
+                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName } = args;
 
                     try {
                         switch (action) {
                             case 'create':
-                                if (!title || !content) {
-                                    return { error: "Title and content are required for create action" };
+                                if (!title) {
+                                    return { error: "Title is required for create action" };
                                 }
-                                return manager.createNote(level || 'workspace', title, content, agentName, tags || []);
+                                return manager.createNote(level || 'workspace', title, content || '', agentName, tags || [], template);
 
                             case 'list':
                                 return manager.listNotes(level || 'workspace', agentName);
@@ -613,8 +846,17 @@ export default async ({ client, project, directory, $ }) => {
                             case 'list_tags':
                                 return manager.listTags(level, agentName);
 
+                            case 'list_templates':
+                                return manager.listTemplates();
+
+                            case 'get_template':
+                                if (!templateName) {
+                                    return { error: "Template name is required for get_template action" };
+                                }
+                                return manager.getTemplate(templateName);
+
                             default:
-                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, or list_tags.` };
+                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, or get_template.` };
                         }
                     } catch (error) {
                         return { error: error.message };

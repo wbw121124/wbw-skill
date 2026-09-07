@@ -43,6 +43,8 @@ node notes.js list --level workspace --tag "会议"
 node notes.js search --query "关键词" --tag "工作"
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ### 1.2 笔记模板
@@ -69,7 +71,12 @@ node notes.js create --level workspace --template meeting --title "周会记录"
 
 # 列出可用模板
 node notes.js templates
+
+# 获取模板内容
+node notes.js template --name meeting
 ```
+
+**状态：** ✅ 已完成
 
 ---
 

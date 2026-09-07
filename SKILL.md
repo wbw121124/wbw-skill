@@ -16,15 +16,17 @@ A unified tool for managing notes with the following parameters:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags |
+| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags, list_templates, get_template |
 | `level` | string | No | Storage level: global, workspace, agent (default: workspace) |
 | `title` | string | For create | Note title |
 | `content` | string | For create/update | Note content |
 | `tags` | array | No | Tags for the note (for create/update) |
+| `template` | string | No | Template name: meeting, todo, daily, idea, bug, feature (for create) |
 | `id` | string | For read/update/delete | Note ID |
 | `agentName` | string | For agent level | Agent name |
 | `query` | string | For search | Search keyword |
 | `tag` | string | For list_by_tag | Tag to filter by |
+| `templateName` | string | For get_template | Template name to retrieve |
 | `searchIn` | string | No | Search scope: all, title, content (default: all) |
 | `caseSensitive` | boolean | No | Case-sensitive search (default: false) |
 | `wholeWord` | boolean | No | Whole word match (default: false) |
@@ -281,6 +283,57 @@ Use `jumpto` to navigate to a specific location:
   "tags": ["meeting", "project-x", "updated"]
 }
 ```
+
+## Template Examples
+
+### List Available Templates
+```json
+{
+  "action": "list_templates"
+}
+```
+
+### Get Template Content
+```json
+{
+  "action": "get_template",
+  "templateName": "meeting"
+}
+```
+
+### Create Note with Template
+```json
+{
+  "action": "create",
+  "level": "workspace",
+  "title": "Weekly Team Meeting",
+  "template": "meeting",
+  "tags": ["meeting", "weekly"]
+}
+```
+
+### Create Note with Template and Additional Content
+```json
+{
+  "action": "create",
+  "level": "workspace",
+  "title": "Bug Report - Login Issue",
+  "content": "Users are unable to login after password reset.",
+  "template": "bug",
+  "tags": ["bug", "urgent"]
+}
+```
+
+### Available Templates
+
+| Template | Description |
+|----------|-------------|
+| `meeting` | Meeting notes template |
+| `todo` | Todo list template |
+| `daily` | Daily journal/log template |
+| `idea` | Idea/inspiration template |
+| `bug` | Bug report template |
+| `feature` | Feature request template |
 
 ## CLI Alternative
 

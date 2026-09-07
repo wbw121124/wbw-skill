@@ -84,6 +84,226 @@ class NotesManager {
         
         // 代理笔记存储路径：当前项目/.wbw-skill/notes/agent/<agent-name>/
         this.agentDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'agent');
+
+        // 预定义笔记模板
+        this.templates = {
+            meeting: {
+                name: 'meeting',
+                description: '会议记录模板',
+                content: `# 会议记录
+
+## 会议信息
+- **日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **时间：** 
+- **地点：** 
+- **参与者：** 
+
+## 议题
+1. 
+
+## 讨论内容
+
+
+## 决议事项
+- [ ] 
+
+## 下一步行动
+- [ ] 
+
+## 备注
+`
+            },
+            todo: {
+                name: 'todo',
+                description: '待办事项模板',
+                content: `# 待办事项
+
+## 紧急且重要
+- [ ] 
+
+## 重要但不紧急
+- [ ] 
+
+## 紧急但不重要
+- [ ] 
+
+## 不紧急不重要
+- [ ] 
+
+## 已完成
+- [x] 
+
+## 备注
+`
+            },
+            daily: {
+                name: 'daily',
+                description: '日记/日志模板',
+                content: `# ${new Date().toLocaleDateString('zh-CN')} 工作日志
+
+## 今日目标
+1. 
+
+## 工作内容
+### 上午
+- 
+
+### 下午
+- 
+
+## 遇到的问题
+
+
+## 解决方案
+
+
+## 明日计划
+1. 
+
+## 备注
+`
+            },
+            idea: {
+                name: 'idea',
+                description: '想法/灵感模板',
+                content: `# 想法记录
+
+## 标题
+**灵感来源：** 
+
+## 核心想法
+
+
+## 详细描述
+
+
+## 可行性分析
+- **技术可行性：** 
+- **资源需求：** 
+- **预期收益：** 
+
+## 相关链接
+- 
+
+## 下一步
+- [ ] 
+`
+            },
+            bug: {
+                name: 'bug',
+                description: 'Bug 报告模板',
+                content: `# Bug 报告
+
+## 基本信息
+- **报告日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **报告人：** 
+- **优先级：** [高/中/低]
+
+## Bug 描述
+### 现象
+
+
+### 预期行为
+
+
+## 复现步骤
+1. 
+2. 
+3. 
+
+## 环境信息
+- **操作系统：** 
+- **浏览器/应用版本：** 
+- **其他环境：** 
+
+## 截图/日志
+
+
+## 临时解决方案
+
+
+## 根本原因分析
+
+
+## 修复建议
+
+
+## 状态
+- [ ] 待确认
+- [ ] 处理中
+- [ ] 已修复
+- [ ] 已验证
+`
+            },
+            feature: {
+                name: 'feature',
+                description: '功能需求模板',
+                content: `# 功能需求
+
+## 基本信息
+- **需求日期：** ${new Date().toLocaleDateString('zh-CN')}
+- **提出者：** 
+- **优先级：** [高/中/低]
+
+## 需求背景
+
+
+## 功能描述
+
+
+## 用户故事
+作为 **[角色]**，我想要 **[功能]**，以便 **[价值]**。
+
+## 验收标准
+- [ ] 
+- [ ] 
+- [ ] 
+
+## 技术方案
+
+
+## 影响范围
+- **前端：** 
+- **后端：** 
+- **数据库：** 
+
+## 工作量评估
+- **预估工时：** 
+- **负责人：** 
+
+## 状态
+- [ ] 待评审
+- [ ] 已批准
+- [ ] 开发中
+- [ ] 已完成
+`
+            }
+        };
+    }
+
+    /**
+     * 获取所有可用模板列表
+     * @returns {Object} 包含模板列表和数量的对象
+     */
+    listTemplates() {
+        const templateList = Object.values(this.templates).map(t => ({
+            name: t.name,
+            description: t.description
+        }));
+        return { templates: templateList, count: templateList.length };
+    }
+
+    /**
+     * 获取指定模板的内容
+     * @param {string} templateName - 模板名称
+     * @returns {Object} 模板详情
+     */
+    getTemplate(templateName) {
+        const template = this.templates[templateName];
+        if (!template) {
+            throw new Error(`Template not found: ${templateName}. Available: ${Object.keys(this.templates).join(', ')}`);
+        }
+        return { ...template };
     }
 
     /**
@@ -173,9 +393,15 @@ class NotesManager {
      * @param {string} content - 笔记内容
      * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
      * @param {Array<string>|null} tags - 标签数组
+     * @param {string|null} template - 模板名称（可选）
      * @returns {Object} 创建结果，包含笔记 ID、标题、路径等信息
      */
-    createNote(level, title, content, agentName = null, tags = null) {
+    createNote(level, title, content, agentName = null, tags = null, template = null) {
+        // 如果指定了模板，使用模板内容
+        if (template) {
+            const templateData = this.getTemplate(template);
+            content = content ? `${content}\n\n---\n\n${templateData.content}` : templateData.content;
+        }
         // 获取存储目录并确保目录存在
         const dir = this.getDir(level, agentName);
         fs.mkdirSync(dir, { recursive: true });
@@ -735,8 +961,8 @@ function main() {
         switch (args.command) {
             case 'create':
                 // 创建笔记命令
-                if (!args.title || !args.content) {
-                    console.error('Error: --title and --content are required for create command');
+                if (!args.title) {
+                    console.error('Error: --title is required for create command');
                     process.exit(1);
                 }
                 
@@ -746,9 +972,10 @@ function main() {
                 const createResult = manager.createNote(
                     args.level || 'workspace',
                     args.title,
-                    args.content,
+                    args.content || '',
                     args['agent-name'],
-                    createTags
+                    createTags,
+                    args.template
                 );
                 
                 console.log(JSON.stringify(createResult, null, 2));
@@ -925,12 +1152,34 @@ function main() {
                 }, null, 2));
                 break;
                 
+            case 'templates':
+                // 列出所有可用模板
+                const templatesResult = manager.listTemplates();
+                console.log(JSON.stringify(templatesResult, null, 2));
+                break;
+                
+            case 'template':
+                // 获取指定模板内容
+                if (!args.name) {
+                    console.error('Error: --name is required for template command');
+                    process.exit(1);
+                }
+                
+                try {
+                    const templateResult = manager.getTemplate(args.name);
+                    console.log(JSON.stringify(templateResult, null, 2));
+                } catch (error) {
+                    console.error(`Error: ${error.message}`);
+                    process.exit(1);
+                }
+                break;
+                
             default:
                 // 无效命令，显示使用帮助
-                console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, or search');
+                console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, search, templates, or template');
                 console.error('Usage: node notes.js <command> [options]');
                 console.error('Commands:');
-                console.error('  create --level <global|workspace|agent> --title "<title>" --content "<content>" [--tags "tag1,tag2"] [--agent-name "<agent-name>"]');
+                console.error('  create --level <global|workspace|agent> --title "<title>" [--content "<content>"] [--tags "tag1,tag2"] [--template <template-name>] [--agent-name "<agent-name>"]');
                 console.error('  list --level <global|workspace|agent> [--tag "<tag>"] [--agent-name "<agent-name>"]');
                 console.error('  read --level <global|workspace|agent> --id "<note-id>" [--agent-name "<agent-name>"]');
                 console.error('  update --level <global|workspace|agent> --id "<note-id>" --content "<content>" [--tags "tag1,tag2"] [--agent-name "<agent-name>"]');
@@ -939,6 +1188,10 @@ function main() {
                 console.error('  jumpto --level <global|workspace|agent> --id "<note-id>" [--lineno <line>] [--column <col>] [--agent-name "<agent-name>"]');
                 console.error('  parse-jumps --content "<content-with-jumps>"');
                 console.error('  search --query "<keyword>" [--level <global|workspace|agent>] [--search-in <all|title|content>] [--case-sensitive true] [--whole-word true] [--regex true]');
+                console.error('  templates - 列出所有可用模板');
+                console.error('  template --name <template-name> - 获取指定模板内容');
+                console.error('');
+                console.error('Available templates: meeting, todo, daily, idea, bug, feature');
                 process.exit(1);
         }
     } catch (error) {
