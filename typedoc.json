@@ -9,5 +9,6 @@
   "excludeProtected": true,
   "excludeExternals": true,
   "plugin": [],
-  "gitRevision": "main"
+  "gitRevision": "main",
+  "lang": "zh"
 }
