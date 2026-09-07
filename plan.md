@@ -32,18 +32,14 @@
 
 ## Phase 5 - 代码去重与重构 🔥
 
-**目标：** 消除三文件重复代码
+**目标：** 消除三文件重复代码，删除旧 JS 文件
 
-**重复代码：**
-- `JumpToParser` - 重复 3 次
-- `NotesManager` - 重复 3 次
-- 模板定义 - 重复 3 次
+**已完成：**
+- 创建 `src/core/jump-parser.ts` 共享模块
+- 创建 `src/core/notes-manager.ts` 共享模块
+- 删除旧 JS 文件（notes.js, server.js, plugin/notes.js）
 
-**解决方案：**
-- 创建 `src/core/` 共享模块
-- 各入口只负责 CLI/MCP/Plugin 适配
-
-**状态：** 待开始
+**状态：** 进行中
 
 ---
 
