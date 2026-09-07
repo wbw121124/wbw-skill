@@ -33,6 +33,13 @@
 - **插件支持**: 可作为 opencode 插件使用
 - **搜索功能**: 支持按关键词搜索笔记标题和内容
 - **跳转语法**: 支持 `[@jumpto]` 语法在笔记间跳转
+- **标签系统**: 支持为笔记添加标签，按标签过滤和搜索
+- **笔记模板**: 预定义常用模板（会议、待办、日志、想法、Bug、功能）
+- **排序选项**: 支持按创建时间、更新时间、标题、ID 排序
+- **批量操作**: 支持批量删除、移动、添加/删除标签
+- **导入/导出**: 支持 Markdown、JSON、ZIP 格式导入导出
+- **版本历史**: 保存修改历史，支持查看和回滚
+- **笔记统计**: 显示笔记总数、字数、存储空间等统计信息
 
 ## 安装
 
@@ -74,14 +81,28 @@ MCP 服务器提供标准的工具接口，可在 opencode/cloud/openclaw 中使
 
 | 工具名 | 说明 | 参数 |
 |--------|------|------|
-| `create_note` | 创建笔记 | level, title, content, agentName |
-| `list_notes` | 列出笔记 | level, agentName |
+| `create_note` | 创建笔记 | level, title, content, agentName, tags, template |
+| `list_notes` | 列出笔记 | level, agentName, sort, order |
 | `read_note` | 读取笔记 | level, id, agentName |
-| `update_note` | 更新笔记 | level, id, content, agentName |
+| `update_note` | 更新笔记 | level, id, content, agentName, tags |
 | `delete_note` | 删除笔记 | level, id, agentName |
 | `search_notes` | 搜索笔记 | query, level, agentName, caseSensitive, wholeWord, regex, searchIn |
 | `jumpto` | 跳转到指定位置 | level, id, agentName, lineno, column |
 | `parse_jumps` | 解析跳转语法 | content |
+| `list_notes_by_tag` | 按标签列出笔记 | tag, level, agentName |
+| `list_tags` | 列出所有标签 | level, agentName |
+| `list_templates` | 列出可用模板 | - |
+| `get_template` | 获取模板内容 | name |
+| `batch_delete` | 批量删除笔记 | level, ids, agentName |
+| `batch_move` | 批量移动笔记 | fromLevel, toLevel, ids |
+| `batch_add_tags` | 批量添加标签 | level, ids, tags |
+| `batch_remove_tags` | 批量删除标签 | level, ids, tags |
+| `export_note` | 导出笔记 | level, id, outputPath, format |
+| `import_note` | 导入笔记 | level, filePath |
+| `list_history` | 查看历史版本 | level, id |
+| `read_history` | 读取历史版本 | level, id, version |
+| `rollback_history` | 回滚版本 | level, id, version |
+| `get_stats` | 获取统计信息 | level, includeTags |
 
 #### 示例：创建笔记
 
