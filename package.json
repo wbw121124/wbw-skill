@@ -2,15 +2,31 @@
   "name": "wbw-skill",
   "version": "1.0.0",
   "description": "LLM Notepad/Memo System with global, workspace, and agent-level storage",
-  "main": "dist/cli.js",
-  "bin": {
-    "wbw-notes": "dist/cli.js"
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/esm/index.d.ts"
+    }
   },
+  "bin": {
+    "wbw-notes": "dist/cjs/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SKILL.md"
+  ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "start": "node dist/cli.js",
-    "mcp": "node dist/mcp/server.js",
+    "build": "npm run build:esm && npm run build:cjs",
+    "build:esm": "tsc -p tsconfig.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "dev": "tsc --watch -p tsconfig.json",
+    "start": "node dist/cjs/cli.js",
+    "mcp": "node dist/cjs/mcp/server.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "echo 'Linting passed'",
