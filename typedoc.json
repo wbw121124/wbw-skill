@@ -8,7 +8,9 @@
   "excludePrivate": true,
   "excludeProtected": true,
   "excludeExternals": true,
-  "plugin": [],
+  "plugin": ["typedoc-theme-fresh"],
   "gitRevision": "main",
-  "lang": "zh"
+  "lang": "zh",
+  "theme": "fresh",
+  "customCss": "./custom.css"
 }

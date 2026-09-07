@@ -1,0 +1,14 @@
+/* Fira Code 字体 */
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --code-font: 'Fira Code', monospace;
+}
+
+pre, code, .tsd-code, .highlight-code {
+  font-family: var(--code-font) !important;
+}
+
+.tsd-navigation a, .tsd-kind-icon {
+  font-family: var(--code-font);
+}
