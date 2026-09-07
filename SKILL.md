@@ -16,7 +16,7 @@ A unified tool for managing notes with the following parameters:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags, list_templates, get_template |
+| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags |
 | `level` | string | No | Storage level: global, workspace, agent (default: workspace) |
 | `title` | string | For create | Note title |
 | `content` | string | For create/update | Note content |
@@ -29,6 +29,11 @@ A unified tool for managing notes with the following parameters:
 | `templateName` | string | For get_template | Template name to retrieve |
 | `sort` | string | No | Sort field: created, updated, title, id (default: created) |
 | `order` | string | No | Sort order: asc, desc (default: desc) |
+| `ids` | array | For batch ops | Array of note IDs for batch operations |
+| `toLevel` | string | For batch_move | Target storage level |
+| `toAgentName` | string | For batch_move | Target agent name |
+| `addTags` | array | For batch_add_tags | Tags to add to notes |
+| `removeTags` | array | For batch_remove_tags | Tags to remove from notes |
 | `searchIn` | string | No | Search scope: all, title, content (default: all) |
 | `caseSensitive` | boolean | No | Case-sensitive search (default: false) |
 | `wholeWord` | boolean | No | Whole word match (default: false) |
@@ -356,6 +361,47 @@ Use `jumpto` to navigate to a specific location:
 | `idea` | Idea/inspiration template |
 | `bug` | Bug report template |
 | `feature` | Feature request template |
+
+## Batch Operation Examples
+
+### Batch Delete Notes
+```json
+{
+  "action": "batch_delete",
+  "level": "workspace",
+  "ids": ["note-123", "note-456", "note-789"]
+}
+```
+
+### Batch Move Notes
+```json
+{
+  "action": "batch_move",
+  "level": "workspace",
+  "toLevel": "global",
+  "ids": ["note-123", "note-456"]
+}
+```
+
+### Batch Add Tags
+```json
+{
+  "action": "batch_add_tags",
+  "level": "workspace",
+  "ids": ["note-123", "note-456"],
+  "addTags": ["important", "reference"]
+}
+```
+
+### Batch Remove Tags
+```json
+{
+  "action": "batch_remove_tags",
+  "level": "workspace",
+  "ids": ["note-123", "note-456"],
+  "removeTags": ["draft"]
+}
+```
 
 ## CLI Alternative
 

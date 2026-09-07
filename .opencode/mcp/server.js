@@ -616,6 +616,114 @@ class NotesManager {
     }
 
     /**
+     * 批量删除笔记
+     */
+    batchDelete(ids, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                this.deleteNote(level, id, agentName);
+                results.push({ id, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            deleted: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量移动笔记到其他级别
+     */
+    batchMove(ids, fromLevel, toLevel, fromAgentName = null, toAgentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(fromLevel, id, fromAgentName, false);
+                const createResult = this.createNote(toLevel, note.title, note.content, toAgentName, note.tags);
+                this.deleteNote(fromLevel, id, fromAgentName);
+                results.push({ id, newId: createResult.id, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            moved: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量添加标签到笔记
+     */
+    batchAddTags(ids, addTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(level, id, agentName, false);
+                const existingTags = note.tags || [];
+                const newTags = [...new Set([...existingTags, ...addTags])];
+                this.updateNote(level, id, note.content, agentName, newTags);
+                results.push({ id, tags: newTags, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量删除标签
+     */
+    batchRemoveTags(ids, removeTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(level, id, agentName, false);
+                const existingTags = note.tags || [];
+                const newTags = existingTags.filter(t => !removeTags.includes(t));
+                this.updateNote(level, id, note.content, agentName, newTags);
+                results.push({ id, tags: newTags, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
      * 获取所有标签列表
      */
     listTags(level = null, agentName = null) {
@@ -1133,6 +1241,121 @@ class MCPServer {
                     },
                     required: ["name"]
                 }
+            },
+            {
+                name: "batch_delete",
+                description: "Delete multiple notes at once",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level"
+                        },
+                        ids: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Array of note IDs to delete"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "ids"]
+                }
+            },
+            {
+                name: "batch_move",
+                description: "Move multiple notes to a different storage level",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        fromLevel: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Source storage level"
+                        },
+                        toLevel: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Target storage level"
+                        },
+                        ids: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Array of note IDs to move"
+                        },
+                        fromAgentName: {
+                            type: "string",
+                            description: "Source agent name (required when fromLevel is 'agent')"
+                        },
+                        toAgentName: {
+                            type: "string",
+                            description: "Target agent name (required when toLevel is 'agent')"
+                        }
+                    },
+                    required: ["fromLevel", "toLevel", "ids"]
+                }
+            },
+            {
+                name: "batch_add_tags",
+                description: "Add tags to multiple notes at once",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level"
+                        },
+                        ids: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Array of note IDs"
+                        },
+                        tags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags to add"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "ids", "tags"]
+                }
+            },
+            {
+                name: "batch_remove_tags",
+                description: "Remove tags from multiple notes at once",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level"
+                        },
+                        ids: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Array of note IDs"
+                        },
+                        tags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags to remove"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "ids", "tags"]
+                }
             }
         ];
     }
@@ -1324,6 +1547,22 @@ class MCPServer {
 
                 case 'get_template':
                     result = this.manager.getTemplate(args.name);
+                    break;
+
+                case 'batch_delete':
+                    result = this.manager.batchDelete(args.ids, args.level, args.agentName);
+                    break;
+
+                case 'batch_move':
+                    result = this.manager.batchMove(args.ids, args.fromLevel, args.toLevel, args.fromAgentName, args.toAgentName);
+                    break;
+
+                case 'batch_add_tags':
+                    result = this.manager.batchAddTags(args.ids, args.tags, args.level, args.agentName);
+                    break;
+
+                case 'batch_remove_tags':
+                    result = this.manager.batchRemoveTags(args.ids, args.tags, args.level, args.agentName);
                     break;
 
                 default:

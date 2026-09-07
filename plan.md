@@ -134,6 +134,8 @@ node notes.js batch-delete --tag "过期"
 node notes.js batch-tag --ids "note-123,note-456" --add-tags "重要"
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ## Phase 2 - 高级功能

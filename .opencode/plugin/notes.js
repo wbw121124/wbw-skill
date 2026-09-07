@@ -610,6 +610,114 @@ class NotesManager {
         return { notes: results, count: results.length, tag };
     }
 
+    /**
+     * 批量删除笔记
+     */
+    batchDelete(ids, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                this.deleteNote(level, id, agentName);
+                results.push({ id, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            deleted: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量移动笔记到其他级别
+     */
+    batchMove(ids, fromLevel, toLevel, fromAgentName = null, toAgentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(fromLevel, id, fromAgentName, false);
+                const createResult = this.createNote(toLevel, note.title, note.content, toAgentName, note.tags);
+                this.deleteNote(fromLevel, id, fromAgentName);
+                results.push({ id, newId: createResult.id, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            moved: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量添加标签到笔记
+     */
+    batchAddTags(ids, addTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(level, id, agentName, false);
+                const existingTags = note.tags || [];
+                const newTags = [...new Set([...existingTags, ...addTags])];
+                this.updateNote(level, id, note.content, agentName, newTags);
+                results.push({ id, tags: newTags, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量删除标签
+     */
+    batchRemoveTags(ids, removeTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const note = this.readNote(level, id, agentName, false);
+                const existingTags = note.tags || [];
+                const newTags = existingTags.filter(t => !removeTags.includes(t));
+                this.updateNote(level, id, note.content, agentName, newTags);
+                results.push({ id, tags: newTags, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
     listTags(level = null, agentName = null) {
         const tagCount = {};
         const levels = level ? [level] : ['global', 'workspace', 'agent'];
@@ -687,7 +795,7 @@ export default async ({ client, project, directory, $ }) => {
                     properties: {
                         action: {
                             type: "string",
-                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template"],
+                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template", "batch_delete", "batch_move", "batch_add_tags", "batch_remove_tags"],
                             description: "The action to perform"
                         },
                         level: {
@@ -775,12 +883,36 @@ export default async ({ client, project, directory, $ }) => {
                             type: "string",
                             enum: ["asc", "desc"],
                             description: "Sort order (for list action, default: desc)"
+                        },
+                        ids: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Array of note IDs (for batch operations)"
+                        },
+                        toLevel: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Target storage level (for batch_move action)"
+                        },
+                        toAgentName: {
+                            type: "string",
+                            description: "Target agent name (for batch_move action)"
+                        },
+                        addTags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags to add (for batch_add_tags action)"
+                        },
+                        removeTags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags to remove (for batch_remove_tags action)"
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order } = args;
+                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order, ids, toLevel, toAgentName, addTags, removeTags } = args;
 
                     try {
                         switch (action) {
@@ -889,8 +1021,32 @@ export default async ({ client, project, directory, $ }) => {
                                 }
                                 return manager.getTemplate(templateName);
 
+                            case 'batch_delete':
+                                if (!ids || ids.length === 0) {
+                                    return { error: "IDs are required for batch_delete action" };
+                                }
+                                return manager.batchDelete(ids, level || 'workspace', agentName);
+
+                            case 'batch_move':
+                                if (!ids || ids.length === 0 || !toLevel) {
+                                    return { error: "IDs and target level are required for batch_move action" };
+                                }
+                                return manager.batchMove(ids, level || 'workspace', toLevel, agentName, toAgentName);
+
+                            case 'batch_add_tags':
+                                if (!ids || ids.length === 0 || !addTags || addTags.length === 0) {
+                                    return { error: "IDs and tags are required for batch_add_tags action" };
+                                }
+                                return manager.batchAddTags(ids, addTags, level || 'workspace', agentName);
+
+                            case 'batch_remove_tags':
+                                if (!ids || ids.length === 0 || !removeTags || removeTags.length === 0) {
+                                    return { error: "IDs and tags are required for batch_remove_tags action" };
+                                }
+                                return manager.batchRemoveTags(ids, removeTags, level || 'workspace', agentName);
+
                             default:
-                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, or get_template.` };
+                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, or batch_remove_tags.` };
                         }
                     } catch (error) {
                         return { error: error.message };

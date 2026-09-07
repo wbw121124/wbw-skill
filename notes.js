@@ -711,6 +711,170 @@ class NotesManager {
     }
 
     /**
+     * 批量删除笔记
+     * @param {Array<string>} ids - 笔记 ID 数组
+     * @param {string} level - 存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 批量删除结果
+     */
+    batchDelete(ids, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                const result = this.deleteNote(level, id, agentName);
+                results.push({ id, success: true });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            deleted: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量移动笔记到其他级别
+     * @param {Array<string>} ids - 笔记 ID 数组
+     * @param {string} fromLevel - 源存储级别
+     * @param {string} toLevel - 目标存储级别
+     * @param {string|null} fromAgentName - 源代理名称
+     * @param {string|null} toAgentName - 目标代理名称
+     * @returns {Object} 批量移动结果
+     */
+    batchMove(ids, fromLevel, toLevel, fromAgentName = null, toAgentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                // 读取源笔记
+                const note = this.readNote(fromLevel, id, fromAgentName, false);
+                
+                // 创建目标笔记
+                const createResult = this.createNote(
+                    toLevel,
+                    note.title,
+                    note.content,
+                    toAgentName,
+                    note.tags
+                );
+                
+                // 删除源笔记
+                this.deleteNote(fromLevel, id, fromAgentName);
+                
+                results.push({ 
+                    id, 
+                    newId: createResult.id,
+                    success: true 
+                });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            moved: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量添加标签到笔记
+     * @param {Array<string>} ids - 笔记 ID 数组
+     * @param {Array<string>} addTags - 要添加的标签数组
+     * @param {string} level - 存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 批量添加标签结果
+     */
+    batchAddTags(ids, addTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                // 读取现有笔记
+                const note = this.readNote(level, id, agentName, false);
+                
+                // 合并标签（去重）
+                const existingTags = note.tags || [];
+                const newTags = [...new Set([...existingTags, ...addTags])];
+                
+                // 更新笔记标签
+                const updateResult = this.updateNote(level, id, note.content, agentName, newTags);
+                
+                results.push({ 
+                    id, 
+                    tags: newTags,
+                    success: true 
+                });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
+     * 批量删除标签
+     * @param {Array<string>} ids - 笔记 ID 数组
+     * @param {Array<string>} removeTags - 要删除的标签数组
+     * @param {string} level - 存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 批量删除标签结果
+     */
+    batchRemoveTags(ids, removeTags, level, agentName = null) {
+        const results = [];
+        const errors = [];
+
+        for (const id of ids) {
+            try {
+                // 读取现有笔记
+                const note = this.readNote(level, id, agentName, false);
+                
+                // 过滤掉要删除的标签
+                const existingTags = note.tags || [];
+                const newTags = existingTags.filter(t => !removeTags.includes(t));
+                
+                // 更新笔记标签
+                const updateResult = this.updateNote(level, id, note.content, agentName, newTags);
+                
+                results.push({ 
+                    id, 
+                    tags: newTags,
+                    success: true 
+                });
+            } catch (error) {
+                errors.push({ id, error: error.message });
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            updated: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
      * 获取所有标签列表
      * @param {string|null} level - 存储级别（可选）
      * @param {string|null} agentName - 代理名称（可选）
@@ -1201,6 +1365,80 @@ function main() {
                 }
                 break;
                 
+            case 'batch-delete':
+                // 批量删除笔记
+                if (!args.ids) {
+                    console.error('Error: --ids is required for batch-delete command');
+                    process.exit(1);
+                }
+                
+                const deleteIds = args.ids.split(',').map(id => id.trim());
+                const batchDeleteResult = manager.batchDelete(
+                    deleteIds,
+                    args.level || 'workspace',
+                    args['agent-name']
+                );
+                
+                console.log(JSON.stringify(batchDeleteResult, null, 2));
+                break;
+                
+            case 'batch-move':
+                // 批量移动笔记
+                if (!args.ids || !args.to) {
+                    console.error('Error: --ids and --to are required for batch-move command');
+                    process.exit(1);
+                }
+                
+                const moveIds = args.ids.split(',').map(id => id.trim());
+                const batchMoveResult = manager.batchMove(
+                    moveIds,
+                    args.level || 'workspace',
+                    args.to,
+                    args['agent-name'],
+                    args['to-agent-name']
+                );
+                
+                console.log(JSON.stringify(batchMoveResult, null, 2));
+                break;
+                
+            case 'batch-tag':
+                // 批量添加标签
+                if (!args.ids || !args['add-tags']) {
+                    console.error('Error: --ids and --add-tags are required for batch-tag command');
+                    process.exit(1);
+                }
+                
+                const tagIds = args.ids.split(',').map(id => id.trim());
+                const addTags = args['add-tags'].split(',').map(t => t.trim());
+                const batchTagResult = manager.batchAddTags(
+                    tagIds,
+                    addTags,
+                    args.level || 'workspace',
+                    args['agent-name']
+                );
+                
+                console.log(JSON.stringify(batchTagResult, null, 2));
+                break;
+                
+            case 'batch-untag':
+                // 批量删除标签
+                if (!args.ids || !args['remove-tags']) {
+                    console.error('Error: --ids and --remove-tags are required for batch-untag command');
+                    process.exit(1);
+                }
+                
+                const untagIds = args.ids.split(',').map(id => id.trim());
+                const removeTags = args['remove-tags'].split(',').map(t => t.trim());
+                const batchUntagResult = manager.batchRemoveTags(
+                    untagIds,
+                    removeTags,
+                    args.level || 'workspace',
+                    args['agent-name']
+                );
+                
+                console.log(JSON.stringify(batchUntagResult, null, 2));
+                break;
+                
             default:
                 // 无效命令，显示使用帮助
                 console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, search, templates, or template');
@@ -1217,6 +1455,10 @@ function main() {
                 console.error('  search --query "<keyword>" [--level <global|workspace|agent>] [--search-in <all|title|content>] [--case-sensitive true] [--whole-word true] [--regex true]');
                 console.error('  templates - 列出所有可用模板');
                 console.error('  template --name <template-name> - 获取指定模板内容');
+                console.error('  batch-delete --ids "id1,id2,id3" --level <level> [--agent-name "<agent-name>"]');
+                console.error('  batch-move --ids "id1,id2,id3" --level <from-level> --to <to-level> [--to-agent-name "<agent-name>"]');
+                console.error('  batch-tag --ids "id1,id2,id3" --add-tags "tag1,tag2" --level <level> [--agent-name "<agent-name>"]');
+                console.error('  batch-untag --ids "id1,id2,id3" --remove-tags "tag1,tag2" --level <level> [--agent-name "<agent-name>"]');
                 console.error('');
                 console.error('Available templates: meeting, todo, daily, idea, bug, feature');
                 process.exit(1);
