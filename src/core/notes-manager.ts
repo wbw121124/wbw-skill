@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 const archiver = require('archiver');
 import { JumpParser } from './jump-parser';
+import { SecurityUtils } from './security';
 import {
     Note,
     NoteMetadata,
@@ -337,6 +338,30 @@ export class NotesManager {
         template?: string,
         pinned?: boolean
     ): { success: boolean; id: string; title: string; level: StorageLevel; agentName?: string; tags: string[]; pinned: boolean; path: string } {
+        // 输入验证
+        if (!SecurityUtils.validateLevel(level)) {
+            throw new Error(`Invalid level: ${level}`);
+        }
+        
+        const sanitizedTitle = SecurityUtils.sanitizeInput(title);
+        if (!sanitizedTitle) {
+            throw new Error('Title cannot be empty');
+        }
+        
+        // 验证标签
+        if (tags) {
+            for (const tag of tags) {
+                if (!SecurityUtils.validateTag(tag)) {
+                    throw new Error(`Invalid tag: ${tag}`);
+                }
+            }
+        }
+        
+        // 验证模板名称
+        if (template && !SecurityUtils.validateTemplateName(template)) {
+            throw new Error(`Invalid template name: ${template}`);
+        }
+
         if (template) {
             const templateData = this.getTemplate(template);
             content = content ? `${content}\n\n---\n\n${templateData.content}` : templateData.content;
@@ -353,7 +378,7 @@ export class NotesManager {
         const frontmatter = [
             '---',
             `id: "${id}"`,
-            `title: "${title}"`,
+            `title: "${sanitizedTitle}"`,
             `created: "${now}"`,
             `updated: "${now}"`,
             `level: "${level}"`,
@@ -372,7 +397,7 @@ export class NotesManager {
         return {
             success: true,
             id,
-            title,
+            title: sanitizedTitle,
             level,
             agentName,
             tags: tags || [],
@@ -452,8 +477,18 @@ export class NotesManager {
         agentName?: string,
         parseJumps: boolean = true
     ): Note {
+        // 验证笔记 ID
+        if (!SecurityUtils.validateNoteId(id)) {
+            throw new Error(`Invalid note ID: ${id}`);
+        }
+        
         const dir = this.getDir(level, agentName);
         const filePath = path.join(dir, `${id}.md`);
+        
+        // 验证路径安全性
+        if (!SecurityUtils.isPathSafe(dir, filePath)) {
+            throw new Error('Path traversal detected');
+        }
         
         if (!fs.existsSync(filePath)) {
             throw new Error(`Note not found: ${id}`);
@@ -541,8 +576,18 @@ export class NotesManager {
      * 删除指定笔记
      */
     deleteNote(level: StorageLevel, id: string, agentName?: string): { success: boolean; id: string; level: StorageLevel; agentName?: string; deleted: boolean } {
+        // 验证笔记 ID
+        if (!SecurityUtils.validateNoteId(id)) {
+            throw new Error(`Invalid note ID: ${id}`);
+        }
+        
         const dir = this.getDir(level, agentName);
         const filePath = path.join(dir, `${id}.md`);
+        
+        // 验证路径安全性
+        if (!SecurityUtils.isPathSafe(dir, filePath)) {
+            throw new Error('Path traversal detected');
+        }
         
         if (!fs.existsSync(filePath)) {
             throw new Error(`Note not found: ${id}`);
