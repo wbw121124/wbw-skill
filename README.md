@@ -43,9 +43,40 @@
 
 ## 安装
 
+### 方式 1：克隆仓库
+
+```bash
+git clone https://github.com/wbw121124/wbw-skill.git
+cd wbw-skill
+npm install
+```
+
+### 方式 2：作为 opencode 技能安装
+
 1. 确保已安装 Node.js（版本 14+）
-2. 将此技能目录放到合适的位置
-3. 在 opencode 配置中注册技能路径
+2. 克隆此仓库到本地：
+   ```bash
+   git clone https://github.com/wbw121124/wbw-skill.git ~/.opencode/skills/wbw-skill
+   ```
+3. 在 `opencode.json` 中配置技能路径
+
+### 依赖要求
+
+- Node.js 14+
+- npm 或 yarn
+
+### 开发安装
+
+```bash
+# 安装依赖
+npm install
+
+# 运行测试
+npm test
+
+# 构建 TypeScript（可选）
+npm run build
+```
 
 ## 配置
 
