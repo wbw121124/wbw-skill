@@ -1,4 +1,4 @@
-/* TypeDoc 自定义样式 - 使用博客字体 */
+/* TypeDoc 自定义样式 */
 
 :root {
   --font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
@@ -14,5 +14,7 @@ body,
 }
 
 pre, code, .tsd-code, .highlight-code {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace !important;
+  font-family: "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace !important;
+  font-feature-settings: "liga" 1, "calt" 1;
+  font-variant-ligatures: common-ligatures;
 }
