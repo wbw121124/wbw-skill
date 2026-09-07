@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const archiver = require('archiver');
 
 /**
  * 跳转语法解析器
@@ -875,6 +876,234 @@ class NotesManager {
     }
 
     /**
+     * 导出单个笔记为 Markdown 文件
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {string} outputPath - 输出路径
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 导出结果
+     */
+    exportNote(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        const dir = this.getDir(level, agentName);
+        const sourcePath = path.join(dir, `${id}.md`);
+        
+        // 确保输出目录存在
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.md`;
+        const destPath = path.join(outputPath, fileName);
+        
+        // 复制文件
+        fs.copyFileSync(sourcePath, destPath);
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            source: sourcePath,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 导出笔记为 JSON 格式
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {string} outputPath - 输出路径
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 导出结果
+     */
+    exportNoteAsJson(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        
+        // 确保输出目录存在
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.json`;
+        const destPath = path.join(outputPath, fileName);
+        
+        // 创建 JSON 数据
+        const jsonData = {
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            created: note.created,
+            updated: note.updated,
+            level: note.level,
+            agentName: note.agentName,
+            tags: note.tags,
+            exportedAt: new Date().toISOString()
+        };
+        
+        // 写入文件
+        fs.writeFileSync(destPath, JSON.stringify(jsonData, null, 2), 'utf8');
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 批量导出笔记为 ZIP 压缩包
+     * @param {string} level - 存储级别
+     * @param {string} outputPath - 输出文件路径
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Promise<Object>} 导出结果
+     */
+    async exportNotesAsZip(level, outputPath, agentName = null) {
+        const dir = this.getDir(level, agentName);
+        
+        if (!fs.existsSync(dir)) {
+            throw new Error(`No notes found for level: ${level}`);
+        }
+        
+        const files = fs.readdirSync(dir).filter(file => file.endsWith('.md'));
+        
+        if (files.length === 0) {
+            throw new Error(`No notes found for level: ${level}`);
+        }
+        
+        // 确保输出目录存在
+        const outputDir = path.dirname(outputPath);
+        fs.mkdirSync(outputDir, { recursive: true });
+        
+        return new Promise((resolve, reject) => {
+            const output = fs.createWriteStream(outputPath);
+            const archive = archiver('zip', { zlib: { level: 9 } });
+            
+            output.on('close', () => {
+                resolve({
+                    success: true,
+                    level,
+                    count: files.length,
+                    destination: outputPath,
+                    size: archive.pointer()
+                });
+            });
+            
+            archive.on('error', reject);
+            
+            archive.pipe(output);
+            
+            // 添加所有笔记文件
+            for (const file of files) {
+                const filePath = path.join(dir, file);
+                archive.file(filePath, { name: file });
+            }
+            
+            archive.finalize();
+        });
+    }
+
+    /**
+     * 导入笔记从 Markdown 文件
+     * @param {string} filePath - 文件路径
+     * @param {string} level - 目标存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 导入结果
+     */
+    importNoteFromMarkdown(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        // 使用文件中的元数据或生成新的
+        const title = frontmatter.title || path.basename(filePath, '.md');
+        const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+        
+        // 创建笔记
+        const result = this.createNote(level, title, noteContent, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 导入笔记从 JSON 文件
+     * @param {string} filePath - 文件路径
+     * @param {string} level - 目标存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 导入结果
+     */
+    importNoteFromJson(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const jsonData = JSON.parse(content);
+        
+        // 使用 JSON 中的数据创建笔记
+        const title = jsonData.title || path.basename(filePath, '.json');
+        const tags = Array.isArray(jsonData.tags) ? jsonData.tags : [];
+        
+        // 创建笔记
+        const result = this.createNote(level, title, jsonData.content, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 批量导入笔记从 ZIP 压缩包
+     * @param {string} zipPath - ZIP 文件路径
+     * @param {string} level - 目标存储级别
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Promise<Object>} 导入结果
+     */
+    async importNotesFromZip(zipPath, level, agentName = null) {
+        const AdmZip = require('adm-zip');
+        
+        if (!fs.existsSync(zipPath)) {
+            throw new Error(`ZIP file not found: ${zipPath}`);
+        }
+        
+        const zip = new AdmZip(zipPath);
+        const entries = zip.getEntries();
+        
+        const results = [];
+        const errors = [];
+        
+        for (const entry of entries) {
+            if (entry.entryName.endsWith('.md')) {
+                try {
+                    const content = entry.getData().toString('utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+                    
+                    const title = frontmatter.title || entry.entryName.replace('.md', '');
+                    const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+                    
+                    const result = this.createNote(level, title, noteContent, agentName, tags);
+                    results.push({ file: entry.entryName, ...result });
+                } catch (error) {
+                    errors.push({ file: entry.entryName, error: error.message });
+                }
+            }
+        }
+        
+        return {
+            success: errors.length === 0,
+            imported: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
+    /**
      * 获取所有标签列表
      * @param {string|null} level - 存储级别（可选）
      * @param {string|null} agentName - 代理名称（可选）
@@ -1439,6 +1668,90 @@ function main() {
                 console.log(JSON.stringify(batchUntagResult, null, 2));
                 break;
                 
+            case 'export':
+                // 导出笔记
+                if (!args.id && !args.level) {
+                    console.error('Error: --id or --level is required for export command');
+                    process.exit(1);
+                }
+                
+                if (!args.output) {
+                    console.error('Error: --output is required for export command');
+                    process.exit(1);
+                }
+                
+                if (args.id) {
+                    // 导出单个笔记
+                    if (args.format === 'json') {
+                        const exportJsonResult = manager.exportNoteAsJson(
+                            args.level || 'workspace',
+                            args.id,
+                            args.output,
+                            args['agent-name']
+                        );
+                        console.log(JSON.stringify(exportJsonResult, null, 2));
+                    } else {
+                        const exportResult = manager.exportNote(
+                            args.level || 'workspace',
+                            args.id,
+                            args.output,
+                            args['agent-name']
+                        );
+                        console.log(JSON.stringify(exportResult, null, 2));
+                    }
+                } else {
+                    // 批量导出为 ZIP
+                    manager.exportNotesAsZip(
+                        args.level,
+                        args.output,
+                        args['agent-name']
+                    ).then(result => {
+                        console.log(JSON.stringify(result, null, 2));
+                    }).catch(error => {
+                        console.error(`Error: ${error.message}`);
+                        process.exit(1);
+                    });
+                }
+                break;
+                
+            case 'import':
+                // 导入笔记
+                if (!args.file) {
+                    console.error('Error: --file is required for import command');
+                    process.exit(1);
+                }
+                
+                if (args.file.endsWith('.zip')) {
+                    // 从 ZIP 导入
+                    manager.importNotesFromZip(
+                        args.file,
+                        args.level || 'workspace',
+                        args['agent-name']
+                    ).then(result => {
+                        console.log(JSON.stringify(result, null, 2));
+                    }).catch(error => {
+                        console.error(`Error: ${error.message}`);
+                        process.exit(1);
+                    });
+                } else if (args.file.endsWith('.json')) {
+                    // 从 JSON 导入
+                    const importJsonResult = manager.importNoteFromJson(
+                        args.file,
+                        args.level || 'workspace',
+                        args['agent-name']
+                    );
+                    console.log(JSON.stringify(importJsonResult, null, 2));
+                } else {
+                    // 从 Markdown 导入
+                    const importResult = manager.importNoteFromMarkdown(
+                        args.file,
+                        args.level || 'workspace',
+                        args['agent-name']
+                    );
+                    console.log(JSON.stringify(importResult, null, 2));
+                }
+                break;
+                
             default:
                 // 无效命令，显示使用帮助
                 console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, search, templates, or template');
@@ -1459,6 +1772,9 @@ function main() {
                 console.error('  batch-move --ids "id1,id2,id3" --level <from-level> --to <to-level> [--to-agent-name "<agent-name>"]');
                 console.error('  batch-tag --ids "id1,id2,id3" --add-tags "tag1,tag2" --level <level> [--agent-name "<agent-name>"]');
                 console.error('  batch-untag --ids "id1,id2,id3" --remove-tags "tag1,tag2" --level <level> [--agent-name "<agent-name>"]');
+                console.error('  export --id "<note-id>" --level <level> --output <output-path> [--format md|json] [--agent-name "<agent-name>"]');
+                console.error('  export --level <level> --output <output.zip> [--agent-name "<agent-name>"] (批量导出为 ZIP)');
+                console.error('  import --file <file-path> --level <level> [--agent-name "<agent-name>"]');
                 console.error('');
                 console.error('Available templates: meeting, todo, daily, idea, bug, feature');
                 process.exit(1);

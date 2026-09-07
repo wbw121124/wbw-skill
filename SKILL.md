@@ -16,7 +16,7 @@ A unified tool for managing notes with the following parameters:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags |
+| `action` | string | Yes | Action: create, list, read, update, delete, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, import |
 | `level` | string | No | Storage level: global, workspace, agent (default: workspace) |
 | `title` | string | For create | Note title |
 | `content` | string | For create/update | Note content |
@@ -34,6 +34,9 @@ A unified tool for managing notes with the following parameters:
 | `toAgentName` | string | For batch_move | Target agent name |
 | `addTags` | array | For batch_add_tags | Tags to add to notes |
 | `removeTags` | array | For batch_remove_tags | Tags to remove from notes |
+| `outputPath` | string | For export | Output file/directory path |
+| `filePath` | string | For import | File path to import (.md, .json, .zip) |
+| `format` | string | No | Export format: md, json (default: md) |
 | `searchIn` | string | No | Search scope: all, title, content (default: all) |
 | `caseSensitive` | boolean | No | Case-sensitive search (default: false) |
 | `wholeWord` | boolean | No | Whole word match (default: false) |
@@ -400,6 +403,48 @@ Use `jumpto` to navigate to a specific location:
   "level": "workspace",
   "ids": ["note-123", "note-456"],
   "removeTags": ["draft"]
+}
+```
+
+## Import/Export Examples
+
+### Export Note as Markdown
+```json
+{
+  "action": "export",
+  "level": "workspace",
+  "id": "note-123",
+  "outputPath": "./exports/",
+  "format": "md"
+}
+```
+
+### Export Note as JSON
+```json
+{
+  "action": "export",
+  "level": "workspace",
+  "id": "note-123",
+  "outputPath": "./exports/",
+  "format": "json"
+}
+```
+
+### Import Note from Markdown
+```json
+{
+  "action": "import",
+  "level": "workspace",
+  "filePath": "./imports/note.md"
+}
+```
+
+### Import Note from JSON
+```json
+{
+  "action": "import",
+  "level": "workspace",
+  "filePath": "./imports/note.json"
 }
 ```
 

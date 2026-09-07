@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const archiver = require('archiver');
 
 /**
  * 跳转语法解析器
@@ -718,6 +719,197 @@ class NotesManager {
         };
     }
 
+    /**
+     * 导出单个笔记为 Markdown 文件
+     */
+    exportNote(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        const dir = this.getDir(level, agentName);
+        const sourcePath = path.join(dir, `${id}.md`);
+        
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.md`;
+        const destPath = path.join(outputPath, fileName);
+        
+        fs.copyFileSync(sourcePath, destPath);
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            source: sourcePath,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 导出笔记为 JSON 格式
+     */
+    exportNoteAsJson(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.json`;
+        const destPath = path.join(outputPath, fileName);
+        
+        const jsonData = {
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            created: note.created,
+            updated: note.updated,
+            level: note.level,
+            agentName: note.agentName,
+            tags: note.tags,
+            exportedAt: new Date().toISOString()
+        };
+        
+        fs.writeFileSync(destPath, JSON.stringify(jsonData, null, 2), 'utf8');
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 批量导出笔记为 ZIP 压缩包
+     */
+    async exportNotesAsZip(level, outputPath, agentName = null) {
+        const dir = this.getDir(level, agentName);
+        
+        if (!fs.existsSync(dir)) {
+            throw new Error(`No notes found for level: ${level}`);
+        }
+        
+        const files = fs.readdirSync(dir).filter(file => file.endsWith('.md'));
+        
+        if (files.length === 0) {
+            throw new Error(`No notes found for level: ${level}`);
+        }
+        
+        const outputDir = path.dirname(outputPath);
+        fs.mkdirSync(outputDir, { recursive: true });
+        
+        return new Promise((resolve, reject) => {
+            const output = fs.createWriteStream(outputPath);
+            const archive = archiver('zip', { zlib: { level: 9 } });
+            
+            output.on('close', () => {
+                resolve({
+                    success: true,
+                    level,
+                    count: files.length,
+                    destination: outputPath,
+                    size: archive.pointer()
+                });
+            });
+            
+            archive.on('error', reject);
+            
+            archive.pipe(output);
+            
+            for (const file of files) {
+                const filePath = path.join(dir, file);
+                archive.file(filePath, { name: file });
+            }
+            
+            archive.finalize();
+        });
+    }
+
+    /**
+     * 导入笔记从 Markdown 文件
+     */
+    importNoteFromMarkdown(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        const title = frontmatter.title || path.basename(filePath, '.md');
+        const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+        
+        const result = this.createNote(level, title, noteContent, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 导入笔记从 JSON 文件
+     */
+    importNoteFromJson(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const jsonData = JSON.parse(content);
+        
+        const title = jsonData.title || path.basename(filePath, '.json');
+        const tags = Array.isArray(jsonData.tags) ? jsonData.tags : [];
+        
+        const result = this.createNote(level, title, jsonData.content, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 批量导入笔记从 ZIP 压缩包
+     */
+    async importNotesFromZip(zipPath, level, agentName = null) {
+        const AdmZip = require('adm-zip');
+        
+        if (!fs.existsSync(zipPath)) {
+            throw new Error(`ZIP file not found: ${zipPath}`);
+        }
+        
+        const zip = new AdmZip(zipPath);
+        const entries = zip.getEntries();
+        
+        const results = [];
+        const errors = [];
+        
+        for (const entry of entries) {
+            if (entry.entryName.endsWith('.md')) {
+                try {
+                    const content = entry.getData().toString('utf8');
+                    const { frontmatter, content: noteContent } = this.parseNote(content);
+                    
+                    const title = frontmatter.title || entry.entryName.replace('.md', '');
+                    const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+                    
+                    const result = this.createNote(level, title, noteContent, agentName, tags);
+                    results.push({ file: entry.entryName, ...result });
+                } catch (error) {
+                    errors.push({ file: entry.entryName, error: error.message });
+                }
+            }
+        }
+        
+        return {
+            success: errors.length === 0,
+            imported: results.length,
+            failed: errors.length,
+            results,
+            errors
+        };
+    }
+
     listTags(level = null, agentName = null) {
         const tagCount = {};
         const levels = level ? [level] : ['global', 'workspace', 'agent'];
@@ -795,7 +987,7 @@ export default async ({ client, project, directory, $ }) => {
                     properties: {
                         action: {
                             type: "string",
-                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template", "batch_delete", "batch_move", "batch_add_tags", "batch_remove_tags"],
+                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template", "batch_delete", "batch_move", "batch_add_tags", "batch_remove_tags", "export", "import"],
                             description: "The action to perform"
                         },
                         level: {
@@ -907,12 +1099,25 @@ export default async ({ client, project, directory, $ }) => {
                             type: "array",
                             items: { type: "string" },
                             description: "Tags to remove (for batch_remove_tags action)"
+                        },
+                        outputPath: {
+                            type: "string",
+                            description: "Output path (for export action)"
+                        },
+                        filePath: {
+                            type: "string",
+                            description: "File path (for import action)"
+                        },
+                        format: {
+                            type: "string",
+                            enum: ["md", "json"],
+                            description: "Export format (for export action, default: md)"
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order, ids, toLevel, toAgentName, addTags, removeTags } = args;
+                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order, ids, toLevel, toAgentName, addTags, removeTags, outputPath, filePath, format } = args;
 
                     try {
                         switch (action) {
@@ -1045,8 +1250,34 @@ export default async ({ client, project, directory, $ }) => {
                                 }
                                 return manager.batchRemoveTags(ids, removeTags, level || 'workspace', agentName);
 
+                            case 'export':
+                                if (!outputPath) {
+                                    return { error: "Output path is required for export action" };
+                                }
+                                if (id) {
+                                    if (format === 'json') {
+                                        return manager.exportNoteAsJson(level || 'workspace', id, outputPath, agentName);
+                                    } else {
+                                        return manager.exportNote(level || 'workspace', id, outputPath, agentName);
+                                    }
+                                } else {
+                                    return await manager.exportNotesAsZip(level || 'workspace', outputPath, agentName);
+                                }
+
+                            case 'import':
+                                if (!filePath) {
+                                    return { error: "File path is required for import action" };
+                                }
+                                if (filePath.endsWith('.zip')) {
+                                    return await manager.importNotesFromZip(filePath, level || 'workspace', agentName);
+                                } else if (filePath.endsWith('.json')) {
+                                    return manager.importNoteFromJson(filePath, level || 'workspace', agentName);
+                                } else {
+                                    return manager.importNoteFromMarkdown(filePath, level || 'workspace', agentName);
+                                }
+
                             default:
-                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, or batch_remove_tags.` };
+                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, or import.` };
                         }
                     } catch (error) {
                         return { error: error.message };

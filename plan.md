@@ -174,6 +174,8 @@ node notes.js import --file "./imports/note.md"
 node notes.js import --file "./imports/notes.zip"
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ### 2.2 版本历史

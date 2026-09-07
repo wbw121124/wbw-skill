@@ -696,6 +696,109 @@ class NotesManager {
     }
 
     /**
+     * 导出单个笔记为 Markdown 文件
+     */
+    exportNote(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        const dir = this.getDir(level, agentName);
+        const sourcePath = path.join(dir, `${id}.md`);
+        
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.md`;
+        const destPath = path.join(outputPath, fileName);
+        
+        fs.copyFileSync(sourcePath, destPath);
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            source: sourcePath,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 导出笔记为 JSON 格式
+     */
+    exportNoteAsJson(level, id, outputPath, agentName = null) {
+        const note = this.readNote(level, id, agentName, false);
+        
+        fs.mkdirSync(outputPath, { recursive: true });
+        
+        const fileName = `${note.title.replace(/[<>:"/\\|?*]/g, '_')}.json`;
+        const destPath = path.join(outputPath, fileName);
+        
+        const jsonData = {
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            created: note.created,
+            updated: note.updated,
+            level: note.level,
+            agentName: note.agentName,
+            tags: note.tags,
+            exportedAt: new Date().toISOString()
+        };
+        
+        fs.writeFileSync(destPath, JSON.stringify(jsonData, null, 2), 'utf8');
+        
+        return {
+            success: true,
+            id,
+            title: note.title,
+            destination: destPath
+        };
+    }
+
+    /**
+     * 导入笔记从 Markdown 文件
+     */
+    importNoteFromMarkdown(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        const title = frontmatter.title || path.basename(filePath, '.md');
+        const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+        
+        const result = this.createNote(level, title, noteContent, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
+     * 导入笔记从 JSON 文件
+     */
+    importNoteFromJson(filePath, level, agentName = null) {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`File not found: ${filePath}`);
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        const jsonData = JSON.parse(content);
+        
+        const title = jsonData.title || path.basename(filePath, '.json');
+        const tags = Array.isArray(jsonData.tags) ? jsonData.tags : [];
+        
+        const result = this.createNote(level, title, jsonData.content, agentName, tags);
+        
+        return {
+            success: true,
+            ...result,
+            source: filePath
+        };
+    }
+
+    /**
      * 批量删除标签
      */
     batchRemoveTags(ids, removeTags, level, agentName = null) {
@@ -1356,6 +1459,61 @@ class MCPServer {
                     },
                     required: ["level", "ids", "tags"]
                 }
+            },
+            {
+                name: "export_note",
+                description: "Export a note to a file",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level"
+                        },
+                        id: {
+                            type: "string",
+                            description: "Note ID to export"
+                        },
+                        outputPath: {
+                            type: "string",
+                            description: "Output directory path"
+                        },
+                        format: {
+                            type: "string",
+                            enum: ["md", "json"],
+                            description: "Export format (default: md)"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "id", "outputPath"]
+                }
+            },
+            {
+                name: "import_note",
+                description: "Import a note from a file",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Target storage level"
+                        },
+                        filePath: {
+                            type: "string",
+                            description: "File path to import (supports .md, .json, .zip)"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "filePath"]
+                }
             }
         ];
     }
@@ -1563,6 +1721,22 @@ class MCPServer {
 
                 case 'batch_remove_tags':
                     result = this.manager.batchRemoveTags(args.ids, args.tags, args.level, args.agentName);
+                    break;
+
+                case 'export_note':
+                    if (args.format === 'json') {
+                        result = this.manager.exportNoteAsJson(args.level, args.id, args.outputPath, args.agentName);
+                    } else {
+                        result = this.manager.exportNote(args.level, args.id, args.outputPath, args.agentName);
+                    }
+                    break;
+
+                case 'import_note':
+                    if (args.filePath.endsWith('.json')) {
+                        result = this.manager.importNoteFromJson(args.filePath, args.level, args.agentName);
+                    } else {
+                        result = this.manager.importNoteFromMarkdown(args.filePath, args.level, args.agentName);
+                    }
                     break;
 
                 default:
