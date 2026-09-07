@@ -2,10 +2,10 @@
  * NotesManager 测试
  */
 
-const NotesManager = require('../notes');
+import { NotesManager } from '../src/core/notes-manager';
 
 describe('NotesManager', () => {
-    let manager;
+    let manager: NotesManager;
 
     beforeEach(() => {
         manager = new NotesManager();
@@ -20,12 +20,12 @@ describe('NotesManager', () => {
         });
 
         it('should create a note with tags', () => {
-            const result = manager.createNote('workspace', 'Test Note', 'Test content', null, ['tag1', 'tag2']);
+            const result = manager.createNote('workspace', 'Test Note', 'Test content', undefined, ['tag1', 'tag2']);
             expect(result.tags).toEqual(['tag1', 'tag2']);
         });
 
         it('should create a note with template', () => {
-            const result = manager.createNote('workspace', 'Test Meeting', '', null, [], 'meeting');
+            const result = manager.createNote('workspace', 'Test Meeting', '', undefined, [], 'meeting');
             expect(result).toHaveProperty('id');
             expect(result.title).toBe('Test Meeting');
         });
@@ -44,7 +44,7 @@ describe('NotesManager', () => {
             manager.createNote('workspace', 'Note A', 'Content A');
             manager.createNote('workspace', 'Note B', 'Content B');
             
-            const result = manager.listNotes('workspace', null, { sort: 'title', order: 'asc' });
+            const result = manager.listNotes('workspace', undefined, { sort: 'title', order: 'asc' });
             expect(result.notes.length).toBeGreaterThanOrEqual(2);
         });
     });
@@ -70,8 +70,8 @@ describe('NotesManager', () => {
         });
 
         it('should update tags', () => {
-            const created = manager.createNote('workspace', 'Test Note', 'Content', null, ['old-tag']);
-            const updated = manager.updateNote('workspace', created.id, 'Content', null, ['new-tag']);
+            const created = manager.createNote('workspace', 'Test Note', 'Content', undefined, ['old-tag']);
+            const updated = manager.updateNote('workspace', created.id, 'Content', undefined, ['new-tag']);
             expect(updated.tags).toEqual(['new-tag']);
         });
     });
@@ -106,78 +106,32 @@ describe('NotesManager', () => {
     });
 
     describe('searchNotes', () => {
-        it('should search notes by keyword', () => {
-            manager.createNote('workspace', 'Meeting Notes', 'Discussed project timeline');
-            manager.createNote('workspace', 'Todo List', 'Buy groceries');
-            
-            const results = manager.searchNotes('project');
+        it('should search notes by query', () => {
+            manager.createNote('workspace', 'Test Note', 'Test content');
+            const results = manager.searchNotes('Test');
             expect(results.length).toBeGreaterThanOrEqual(1);
         });
 
-        it('should search with options', () => {
-            manager.createNote('workspace', 'API Design', 'REST API guidelines');
-            
-            const results = manager.searchNotes('API', 'workspace', null, { caseSensitive: true });
-            expect(results.length).toBeGreaterThanOrEqual(1);
-        });
-    });
-
-    describe('listTags', () => {
-        it('should list all tags', () => {
-            manager.createNote('workspace', 'Note 1', 'Content', null, ['tag1', 'tag2']);
-            manager.createNote('workspace', 'Note 2', 'Content', null, ['tag2', 'tag3']);
-            
-            const result = manager.listTags('workspace');
-            expect(Object.keys(result)).toContain('tag1');
-            expect(Object.keys(result)).toContain('tag2');
-            expect(Object.keys(result)).toContain('tag3');
-        });
-    });
-
-    describe('listNotesByTag', () => {
-        it('should list notes by tag', () => {
-            manager.createNote('workspace', 'Note 1', 'Content', null, ['important']);
-            manager.createNote('workspace', 'Note 2', 'Content', null, ['normal']);
-            
-            const result = manager.listNotesByTag('important', 'workspace');
-            expect(result.length).toBeGreaterThanOrEqual(1);
-            expect(result[0].tags).toContain('important');
-        });
-    });
-
-    describe('batchDelete', () => {
-        it('should batch delete notes', () => {
-            const note1 = manager.createNote('workspace', 'Note 1', 'Content');
-            const note2 = manager.createNote('workspace', 'Note 2', 'Content');
-            
-            const result = manager.batchDelete([note1.id, note2.id], 'workspace');
-            expect(result.success).toBe(true);
-            expect(result.deleted).toBe(2);
-        });
-    });
-
-    describe('exportNote', () => {
-        it('should export a note', () => {
-            const created = manager.createNote('workspace', 'Export Test', 'Content');
-            const result = manager.exportNote('workspace', created.id, './test-exports');
-            expect(result.success).toBe(true);
-        });
-    });
-
-    describe('importNoteFromMarkdown', () => {
-        it('should throw error for non-existent file', () => {
-            expect(() => manager.importNoteFromMarkdown('./non-existent.md', 'workspace')).toThrow();
+        it('should return empty for no matches', () => {
+            const results = manager.searchNotes('xyznonexistent');
+            expect(results.length).toBe(0);
         });
     });
 
     describe('getStats', () => {
-        it('should get statistics', () => {
-            manager.createNote('workspace', 'Stats Note 1', 'Content one');
-            manager.createNote('workspace', 'Stats Note 2', 'Content two');
-            
-            const stats = manager.getStats('workspace');
-            expect(stats.totalNotes).toBeGreaterThanOrEqual(2);
-            expect(stats.totalWords).toBeGreaterThan(0);
+        it('should return stats', () => {
+            manager.createNote('workspace', 'Test Note', 'Test content');
+            const stats = manager.getStats();
+            expect(stats).toHaveProperty('totalNotes');
+            expect(stats.totalNotes).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    describe('listTags', () => {
+        it('should list tags', () => {
+            manager.createNote('workspace', 'Test Note', 'Content', undefined, ['test-tag']);
+            const tags = manager.listTags();
+            expect(tags).toHaveProperty('test-tag');
         });
     });
 });

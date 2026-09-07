@@ -10,7 +10,7 @@ export class JumpParser {
      * 解析跳转语法
      */
     static parse(content: string): JumpParseResult[] {
-        const regex = /\[@jumpto\s+([^,\s]+)(?:,([^,\s]*))?,([^:]+)(?::(\d+))?(?::(\d+))?\]/g;
+        const regex = /\[@jumpto\s+([^,\s]+)(?:,([^,\s]*))?,([^\]:\s]+)(?::(\d+))?(?::(\d+))?\]/g;
         const jumps: JumpParseResult[] = [];
         let match: RegExpExecArray | null;
 
