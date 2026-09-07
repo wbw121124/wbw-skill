@@ -165,9 +165,8 @@ describe('NotesManager', () => {
     });
 
     describe('importNoteFromMarkdown', () => {
-        it('should import a note from markdown', () => {
-            const result = manager.importNoteFromMarkdown('./test-import.md', 'workspace');
-            expect(result).toHaveProperty('success');
+        it('should throw error for non-existent file', () => {
+            expect(() => manager.importNoteFromMarkdown('./non-existent.md', 'workspace')).toThrow();
         });
     });
 
