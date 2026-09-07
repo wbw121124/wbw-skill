@@ -1,7 +1,7 @@
 /**
  * WBW Skill - 通用笔记管理工具插件
  * 
- * 为 opencode 提供笔记管理的自定义工具
+ * 为 opencode/cloud/openclaw 提供笔记管理的自定义工具
  * 支持全局/工作区/代理三个存储级别
  * 
  * 作者：wbw121124
@@ -1206,7 +1206,7 @@ class NotesManager {
 }
 
 /**
- * opencode 插件入口
+ * opencode/cloud/openclaw 插件入口
  */
 export default async ({ client, project, directory, $ }) => {
     const manager = new NotesManager();

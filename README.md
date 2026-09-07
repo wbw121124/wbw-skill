@@ -30,7 +30,7 @@
 - **代理存储**: 特定代理专用的笔记，存储在 `.wbw-skill/notes/agent/<agent-name>/`
 - **Markdown 格式**: 笔记以 Markdown 文件存储，支持 YAML 元数据
 - **MCP 协议支持**: 可在 opencode/cloud/openclaw 中使用
-- **插件支持**: 可作为 opencode 插件使用
+- **插件支持**: 可作为 opencode/cloud/openclaw 插件使用
 - **搜索功能**: 支持按关键词搜索笔记标题和内容
 - **跳转语法**: 支持 `[@jumpto]` 语法在笔记间跳转
 - **标签系统**: 支持为笔记添加标签，按标签过滤和搜索
@@ -51,7 +51,7 @@ cd wbw-skill
 npm install
 ```
 
-### 方式 2：作为 opencode 技能安装
+### 方式 2：作为 opencode/cloud/openclaw 技能安装
 
 1. 确保已安装 Node.js（版本 14+）
 2. 克隆此仓库到本地：
@@ -383,7 +383,7 @@ level: "global"
 
 ```
 wbw-skill/
-├── SKILL.md              # opencode 技能定义文件（英文）
+├── SKILL.md              # opencode/cloud/openclaw 技能定义文件（英文）
 ├── README.md             # 中文使用文档
 ├── notes.js              # 笔记管理命令行工具
 ├── opencode.json         # opencode 配置文件
@@ -401,7 +401,7 @@ wbw-skill/
 
 - Node.js
 - MCP (Model Context Protocol)
-- opencode 插件系统
+- opencode/cloud/openclaw 插件系统
 - Markdown + YAML
 
 ## 许可证
