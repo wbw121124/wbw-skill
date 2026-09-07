@@ -3,7 +3,7 @@ name: wbw-skill
 description: A notepad/memo system for LLMs with global, workspace, and agent-level storage. Use when the user wants to create, read, update, delete, or search notes/memos. Use ONLY for note-taking tasks.
 ---
 
-# WBW Skill - LLM Notepad/Memo System
+# wbw-skill - LLM Notepad/Memo System
 
 This skill provides a notepad/memo system for LLMs with three storage levels:
 - **Global**: Shared across all projects and agents
