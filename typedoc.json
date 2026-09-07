@@ -1,0 +1,19 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "docs",
+  "name": "WBW Skill API",
+  "readme": "README.md",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeExternals": true,
+  "media": "assets",
+  "plugin": [],
+  "gitRevision": "main",
+  "githubPages": true,
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  }
+}
