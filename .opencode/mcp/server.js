@@ -81,6 +81,7 @@ class NotesManager {
         this.globalDir = path.join(os.homedir(), '.wbw-skill', 'notes', 'global');
         this.workspaceDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'workspace');
         this.agentDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'agent');
+        this.historyDir = path.join(process.cwd(), '.wbw-skill', 'history');
 
         // 预定义笔记模板
         this.templates = {
@@ -795,6 +796,141 @@ class NotesManager {
             success: true,
             ...result,
             source: filePath
+        };
+    }
+
+    /**
+     * 保存笔记历史版本
+     */
+    saveHistory(level, id, content, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        fs.mkdirSync(historyLevelDir, { recursive: true });
+        
+        const note = this.readNote(level, id, agentName, false);
+        
+        const version = Date.now();
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        const frontmatter = [
+            '---',
+            `id: "${id}"`,
+            `title: "${note.title}"`,
+            `version: "${version}"`,
+            `savedAt: "${new Date().toISOString()}"`,
+            `level: "${level}"`,
+            agentName ? `agent: "${agentName}"` : null,
+            '---'
+        ].filter(Boolean).join('\n');
+        
+        const versionContent = `${frontmatter}\n\n${content}`;
+        fs.writeFileSync(versionPath, versionContent, 'utf8');
+        
+        this.cleanupHistory(historyLevelDir, id, 10);
+        
+        return {
+            success: true,
+            id,
+            version,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 清理旧的历史版本
+     */
+    cleanupHistory(historyDir, noteId, keepCount = 10) {
+        if (!fs.existsSync(historyDir)) {
+            return;
+        }
+        
+        const files = fs.readdirSync(historyDir)
+            .filter(f => f.startsWith(`${noteId}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        if (files.length > keepCount) {
+            for (let i = keepCount; i < files.length; i++) {
+                fs.unlinkSync(path.join(historyDir, files[i]));
+            }
+        }
+    }
+
+    /**
+     * 查看笔记历史版本列表
+     */
+    listHistory(level, id, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        
+        if (!fs.existsSync(historyLevelDir)) {
+            return { versions: [], count: 0 };
+        }
+        
+        const files = fs.readdirSync(historyLevelDir)
+            .filter(f => f.startsWith(`${id}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        const versions = [];
+        for (const file of files) {
+            const filePath = path.join(historyLevelDir, file);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const { frontmatter } = this.parseNote(content);
+            
+            versions.push({
+                version: parseInt(frontmatter.version || file.replace(`${id}_v`, '').replace('.md', '')),
+                savedAt: frontmatter.savedAt,
+                path: filePath
+            });
+        }
+        
+        return { versions, count: versions.length };
+    }
+
+    /**
+     * 查看特定历史版本内容
+     */
+    readHistory(level, id, version, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        if (!fs.existsSync(versionPath)) {
+            throw new Error(`Version not found: ${id} v${version}`);
+        }
+        
+        const content = fs.readFileSync(versionPath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        return {
+            id: frontmatter.id || id,
+            title: frontmatter.title,
+            version: parseInt(frontmatter.version || version),
+            savedAt: frontmatter.savedAt,
+            content: noteContent,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 回滚到指定历史版本
+     */
+    rollbackHistory(level, id, version, agentName = null) {
+        const historyVersion = this.readHistory(level, id, version, agentName);
+        
+        const currentNote = this.readNote(level, id, agentName, false);
+        this.saveHistory(level, id, currentNote.content, agentName);
+        
+        const updateResult = this.updateNote(level, id, historyVersion.content, agentName);
+        
+        return {
+            success: true,
+            id,
+            rolledBackTo: version,
+            ...updateResult
         };
     }
 
@@ -1514,6 +1650,83 @@ class MCPServer {
                     },
                     required: ["level", "filePath"]
                 }
+            },
+            {
+                name: "list_history",
+                description: "List all history versions of a note",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level"
+                        },
+                        id: {
+                            type: "string",
+                            description: "Note ID"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "id"]
+                }
+            },
+            {
+                name: "read_history",
+                description: "Read a specific history version of a note",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level"
+                        },
+                        id: {
+                            type: "string",
+                            description: "Note ID"
+                        },
+                        version: {
+                            type: "integer",
+                            description: "Version number to read"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "id", "version"]
+                }
+            },
+            {
+                name: "rollback_history",
+                description: "Rollback a note to a specific history version",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        level: {
+                            type: "string",
+                            enum: ["global", "workspace", "agent"],
+                            description: "Storage level"
+                        },
+                        id: {
+                            type: "string",
+                            description: "Note ID"
+                        },
+                        version: {
+                            type: "integer",
+                            description: "Version number to rollback to"
+                        },
+                        agentName: {
+                            type: "string",
+                            description: "Agent name (required when level is 'agent')"
+                        }
+                    },
+                    required: ["level", "id", "version"]
+                }
             }
         ];
     }
@@ -1737,6 +1950,18 @@ class MCPServer {
                     } else {
                         result = this.manager.importNoteFromMarkdown(args.filePath, args.level, args.agentName);
                     }
+                    break;
+
+                case 'list_history':
+                    result = this.manager.listHistory(args.level, args.id, args.agentName);
+                    break;
+
+                case 'read_history':
+                    result = this.manager.readHistory(args.level, args.id, args.version, args.agentName);
+                    break;
+
+                case 'rollback_history':
+                    result = this.manager.rollbackHistory(args.level, args.id, args.version, args.agentName);
                     break;
 
                 default:

@@ -85,6 +85,9 @@ class NotesManager {
         
         // 代理笔记存储路径：当前项目/.wbw-skill/notes/agent/<agent-name>/
         this.agentDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'agent');
+        
+        // 版本历史存储路径：当前项目/.wbw-skill/history/
+        this.historyDir = path.join(process.cwd(), '.wbw-skill', 'history');
 
         // 预定义笔记模板
         this.templates = {
@@ -1104,6 +1107,174 @@ class NotesManager {
     }
 
     /**
+     * 保存笔记历史版本
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {string} content - 笔记内容
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 保存结果
+     */
+    saveHistory(level, id, content, agentName = null) {
+        // 确定历史目录
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        fs.mkdirSync(historyLevelDir, { recursive: true });
+        
+        // 读取现有笔记获取标题
+        const note = this.readNote(level, id, agentName, false);
+        
+        // 创建版本文件名
+        const version = Date.now();
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        // 构建版本内容
+        const frontmatter = [
+            '---',
+            `id: "${id}"`,
+            `title: "${note.title}"`,
+            `version: "${version}"`,
+            `savedAt: "${new Date().toISOString()}"`,
+            `level: "${level}"`,
+            agentName ? `agent: "${agentName}"` : null,
+            '---'
+        ].filter(Boolean).join('\n');
+        
+        const versionContent = `${frontmatter}\n\n${content}`;
+        fs.writeFileSync(versionPath, versionContent, 'utf8');
+        
+        // 清理旧版本（保留最近 10 个版本）
+        this.cleanupHistory(historyLevelDir, id, 10);
+        
+        return {
+            success: true,
+            id,
+            version,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 清理旧的历史版本
+     * @param {string} historyDir - 历史目录
+     * @param {string} noteId - 笔记 ID
+     * @param {number} keepCount - 保留的版本数量
+     */
+    cleanupHistory(historyDir, noteId, keepCount = 10) {
+        if (!fs.existsSync(historyDir)) {
+            return;
+        }
+        
+        // 获取该笔记的所有版本文件
+        const files = fs.readdirSync(historyDir)
+            .filter(f => f.startsWith(`${noteId}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        // 删除超出保留数量的旧版本
+        if (files.length > keepCount) {
+            for (let i = keepCount; i < files.length; i++) {
+                fs.unlinkSync(path.join(historyDir, files[i]));
+            }
+        }
+    }
+
+    /**
+     * 查看笔记历史版本列表
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 历史版本列表
+     */
+    listHistory(level, id, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        
+        if (!fs.existsSync(historyLevelDir)) {
+            return { versions: [], count: 0 };
+        }
+        
+        // 获取该笔记的所有版本文件
+        const files = fs.readdirSync(historyLevelDir)
+            .filter(f => f.startsWith(`${id}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        const versions = [];
+        for (const file of files) {
+            const filePath = path.join(historyLevelDir, file);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const { frontmatter } = this.parseNote(content);
+            
+            versions.push({
+                version: parseInt(frontmatter.version || file.replace(`${id}_v`, '').replace('.md', '')),
+                savedAt: frontmatter.savedAt,
+                path: filePath
+            });
+        }
+        
+        return { versions, count: versions.length };
+    }
+
+    /**
+     * 查看特定历史版本内容
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {number} version - 版本号
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 版本内容
+     */
+    readHistory(level, id, version, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        if (!fs.existsSync(versionPath)) {
+            throw new Error(`Version not found: ${id} v${version}`);
+        }
+        
+        const content = fs.readFileSync(versionPath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        return {
+            id: frontmatter.id || id,
+            title: frontmatter.title,
+            version: parseInt(frontmatter.version || version),
+            savedAt: frontmatter.savedAt,
+            content: noteContent,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 回滚到指定历史版本
+     * @param {string} level - 存储级别
+     * @param {string} id - 笔记 ID
+     * @param {number} version - 版本号
+     * @param {string|null} agentName - 代理名称（仅 agent 级别需要）
+     * @returns {Object} 回滚结果
+     */
+    rollbackHistory(level, id, version, agentName = null) {
+        // 先读取历史版本内容
+        const historyVersion = this.readHistory(level, id, version, agentName);
+        
+        // 保存当前版本到历史（防止误操作）
+        const currentNote = this.readNote(level, id, agentName, false);
+        this.saveHistory(level, id, currentNote.content, agentName);
+        
+        // 更新笔记为历史版本内容
+        const updateResult = this.updateNote(level, id, historyVersion.content, agentName);
+        
+        return {
+            success: true,
+            id,
+            rolledBackTo: version,
+            ...updateResult
+        };
+    }
+
+    /**
      * 获取所有标签列表
      * @param {string|null} level - 存储级别（可选）
      * @param {string|null} agentName - 代理名称（可选）
@@ -1752,6 +1923,49 @@ function main() {
                 }
                 break;
                 
+            case 'history':
+                // 查看笔记历史版本
+                if (!args.id) {
+                    console.error('Error: --id is required for history command');
+                    process.exit(1);
+                }
+                
+                if (args.version) {
+                    // 查看特定版本
+                    const historyVersionResult = manager.readHistory(
+                        args.level || 'workspace',
+                        args.id,
+                        parseInt(args.version),
+                        args['agent-name']
+                    );
+                    console.log(JSON.stringify(historyVersionResult, null, 2));
+                } else {
+                    // 列出所有版本
+                    const historyResult = manager.listHistory(
+                        args.level || 'workspace',
+                        args.id,
+                        args['agent-name']
+                    );
+                    console.log(JSON.stringify(historyResult, null, 2));
+                }
+                break;
+                
+            case 'rollback':
+                // 回滚到指定版本
+                if (!args.id || !args.version) {
+                    console.error('Error: --id and --version are required for rollback command');
+                    process.exit(1);
+                }
+                
+                const rollbackResult = manager.rollbackHistory(
+                    args.level || 'workspace',
+                    args.id,
+                    parseInt(args.version),
+                    args['agent-name']
+                );
+                console.log(JSON.stringify(rollbackResult, null, 2));
+                break;
+                
             default:
                 // 无效命令，显示使用帮助
                 console.error('Error: Invalid command. Use create, list, read, update, delete, tags, jumpto, parse-jumps, search, templates, or template');
@@ -1775,6 +1989,8 @@ function main() {
                 console.error('  export --id "<note-id>" --level <level> --output <output-path> [--format md|json] [--agent-name "<agent-name>"]');
                 console.error('  export --level <level> --output <output.zip> [--agent-name "<agent-name>"] (批量导出为 ZIP)');
                 console.error('  import --file <file-path> --level <level> [--agent-name "<agent-name>"]');
+                console.error('  history --level <level> --id "<note-id>" [--version <version>] [--agent-name "<agent-name>"]');
+                console.error('  rollback --level <level> --id "<note-id>" --version <version> [--agent-name "<agent-name>"]');
                 console.error('');
                 console.error('Available templates: meeting, todo, daily, idea, bug, feature');
                 process.exit(1);

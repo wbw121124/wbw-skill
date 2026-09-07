@@ -79,6 +79,7 @@ class NotesManager {
         this.globalDir = path.join(os.homedir(), '.wbw-skill', 'notes', 'global');
         this.workspaceDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'workspace');
         this.agentDir = path.join(process.cwd(), '.wbw-skill', 'notes', 'agent');
+        this.historyDir = path.join(process.cwd(), '.wbw-skill', 'history');
 
         // 预定义笔记模板
         this.templates = {
@@ -910,6 +911,141 @@ class NotesManager {
         };
     }
 
+    /**
+     * 保存笔记历史版本
+     */
+    saveHistory(level, id, content, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        fs.mkdirSync(historyLevelDir, { recursive: true });
+        
+        const note = this.readNote(level, id, agentName, false);
+        
+        const version = Date.now();
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        const frontmatter = [
+            '---',
+            `id: "${id}"`,
+            `title: "${note.title}"`,
+            `version: "${version}"`,
+            `savedAt: "${new Date().toISOString()}"`,
+            `level: "${level}"`,
+            agentName ? `agent: "${agentName}"` : null,
+            '---'
+        ].filter(Boolean).join('\n');
+        
+        const versionContent = `${frontmatter}\n\n${content}`;
+        fs.writeFileSync(versionPath, versionContent, 'utf8');
+        
+        this.cleanupHistory(historyLevelDir, id, 10);
+        
+        return {
+            success: true,
+            id,
+            version,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 清理旧的历史版本
+     */
+    cleanupHistory(historyDir, noteId, keepCount = 10) {
+        if (!fs.existsSync(historyDir)) {
+            return;
+        }
+        
+        const files = fs.readdirSync(historyDir)
+            .filter(f => f.startsWith(`${noteId}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        if (files.length > keepCount) {
+            for (let i = keepCount; i < files.length; i++) {
+                fs.unlinkSync(path.join(historyDir, files[i]));
+            }
+        }
+    }
+
+    /**
+     * 查看笔记历史版本列表
+     */
+    listHistory(level, id, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        
+        if (!fs.existsSync(historyLevelDir)) {
+            return { versions: [], count: 0 };
+        }
+        
+        const files = fs.readdirSync(historyLevelDir)
+            .filter(f => f.startsWith(`${id}_v`) && f.endsWith('.md'))
+            .sort()
+            .reverse();
+        
+        const versions = [];
+        for (const file of files) {
+            const filePath = path.join(historyLevelDir, file);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const { frontmatter } = this.parseNote(content);
+            
+            versions.push({
+                version: parseInt(frontmatter.version || file.replace(`${id}_v`, '').replace('.md', '')),
+                savedAt: frontmatter.savedAt,
+                path: filePath
+            });
+        }
+        
+        return { versions, count: versions.length };
+    }
+
+    /**
+     * 查看特定历史版本内容
+     */
+    readHistory(level, id, version, agentName = null) {
+        const levelDir = agentName ? `${level}/${agentName}` : level;
+        const historyLevelDir = path.join(this.historyDir, levelDir);
+        const versionFile = `${id}_v${version}.md`;
+        const versionPath = path.join(historyLevelDir, versionFile);
+        
+        if (!fs.existsSync(versionPath)) {
+            throw new Error(`Version not found: ${id} v${version}`);
+        }
+        
+        const content = fs.readFileSync(versionPath, 'utf8');
+        const { frontmatter, content: noteContent } = this.parseNote(content);
+        
+        return {
+            id: frontmatter.id || id,
+            title: frontmatter.title,
+            version: parseInt(frontmatter.version || version),
+            savedAt: frontmatter.savedAt,
+            content: noteContent,
+            path: versionPath
+        };
+    }
+
+    /**
+     * 回滚到指定历史版本
+     */
+    rollbackHistory(level, id, version, agentName = null) {
+        const historyVersion = this.readHistory(level, id, version, agentName);
+        
+        const currentNote = this.readNote(level, id, agentName, false);
+        this.saveHistory(level, id, currentNote.content, agentName);
+        
+        const updateResult = this.updateNote(level, id, historyVersion.content, agentName);
+        
+        return {
+            success: true,
+            id,
+            rolledBackTo: version,
+            ...updateResult
+        };
+    }
+
     listTags(level = null, agentName = null) {
         const tagCount = {};
         const levels = level ? [level] : ['global', 'workspace', 'agent'];
@@ -987,7 +1123,7 @@ export default async ({ client, project, directory, $ }) => {
                     properties: {
                         action: {
                             type: "string",
-                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template", "batch_delete", "batch_move", "batch_add_tags", "batch_remove_tags", "export", "import"],
+                            enum: ["create", "list", "read", "update", "delete", "jumpto", "parse_jumps", "search", "list_by_tag", "list_tags", "list_templates", "get_template", "batch_delete", "batch_move", "batch_add_tags", "batch_remove_tags", "export", "import", "list_history", "read_history", "rollback_history"],
                             description: "The action to perform"
                         },
                         level: {
@@ -1112,12 +1248,16 @@ export default async ({ client, project, directory, $ }) => {
                             type: "string",
                             enum: ["md", "json"],
                             description: "Export format (for export action, default: md)"
+                        },
+                        version: {
+                            type: "integer",
+                            description: "Version number (for read_history and rollback_history actions)"
                         }
                     },
                     required: ["action"]
                 },
                 execute: async (args) => {
-                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order, ids, toLevel, toAgentName, addTags, removeTags, outputPath, filePath, format } = args;
+                    const { action, level, title, content, tags, id, agentName, lineno, column, query, tag, caseSensitive, wholeWord, regex, searchIn, template, templateName, sort, order, ids, toLevel, toAgentName, addTags, removeTags, outputPath, filePath, format, version } = args;
 
                     try {
                         switch (action) {
@@ -1276,8 +1416,26 @@ export default async ({ client, project, directory, $ }) => {
                                     return manager.importNoteFromMarkdown(filePath, level || 'workspace', agentName);
                                 }
 
+                            case 'list_history':
+                                if (!id) {
+                                    return { error: "ID is required for list_history action" };
+                                }
+                                return manager.listHistory(level || 'workspace', id, agentName);
+
+                            case 'read_history':
+                                if (!id || !version) {
+                                    return { error: "ID and version are required for read_history action" };
+                                }
+                                return manager.readHistory(level || 'workspace', id, version, agentName);
+
+                            case 'rollback_history':
+                                if (!id || !version) {
+                                    return { error: "ID and version are required for rollback_history action" };
+                                }
+                                return manager.rollbackHistory(level || 'workspace', id, version, agentName);
+
                             default:
-                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, or import.` };
+                                return { error: `Invalid action: ${action}. Use create, list, read, update, delete, jumpto, parse_jumps, search, list_by_tag, list_tags, list_templates, get_template, batch_delete, batch_move, batch_add_tags, batch_remove_tags, export, import, list_history, read_history, or rollback_history.` };
                         }
                     } catch (error) {
                         return { error: error.message };

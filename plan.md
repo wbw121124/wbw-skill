@@ -204,6 +204,8 @@ node notes.js history --level workspace --id "note-123" --version 3
 node notes.js rollback --level workspace --id "note-123" --version 2
 ```
 
+**状态：** ✅ 已完成
+
 ---
 
 ### 2.3 笔记统计
